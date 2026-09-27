@@ -58,7 +58,7 @@
 
                     <h3 class="h6 text-primary">Security and activation</h3>
                     <div class="row g-3 mb-4">
-                        <div class="col-md-4"><label class="form-label">Assurance (%)</label><input class="form-control" type="number" name="assurance_percent" min="0" max="100" step="0.0001" value="{{ old('assurance_percent', 3) }}" required><small>Paid separately before disbursement. Non-refundable. Use 0 to disable.</small></div>
+                        <div class="col-md-4"><label class="form-label">Assurance (%)</label><input class="form-control" type="number" name="assurance_percent" min="0" max="100" step="0.0001" value="{{ old('assurance_percent', 3) }}" required><small>Repaid with loan installments without extra interest. Use 0 to disable.</small></div>
                         <div class="col-md-4"><label class="form-label">Processing fee (fixed amount)</label><input class="form-control" type="number" name="processing_fee" min="0" step="0.01" value="{{ old('processing_fee', 0) }}" required><small>Optional: 0 means no processing fee. Deducted from principal at payout.</small></div>
                     </div>
                     <div class="row g-3">
@@ -102,8 +102,8 @@
                     <div class="row g-4">
                         <div class="col-lg-4">
                             <h4 class="h6">Fees</h4>
-                            <p>Assurance: <strong>{{ number_format((float) $version->assurance_percent, 2) }}%</strong>, payable separately before disbursement.</p>
-                            <p class="small text-muted">Disbursement fees reduce the cash received, while the full principal remains repayable. For example: 50,000 principal minus 10,000 processing fee = 40,000 received.</p>
+                            <p>Assurance: <strong>{{ number_format((float) $version->assurance_percent, 2) }}%</strong>, included in loan installments without extra interest.</p>
+                            <p class="small text-muted">Disbursement fees reduce the cash received, while the full principal remains repayable. For example: 500,000 principal minus 10,000 processing fee = 490,000 received.</p>
                             @forelse ($version->fees as $fee)
                                 <div class="border rounded p-2 mb-2 d-flex justify-content-between gap-2"><span><strong>{{ $fee->name }}</strong><br><small>{{ $fee->calculation_method === 'Percentage' ? number_format((float) $fee->value * 100, 2).'%' : number_format((float) $fee->value, 2) }} · {{ $fee->collection_point }} · {{ $fee->is_financed ? 'Financed' : 'Not financed' }}</small></span>@can('loan-product.fee.manage')<form method="POST" action="{{ route('product-fees.destroy', $fee) }}">@csrf @method('DELETE')<button class="btn btn-sm btn-link text-danger">Remove</button></form>@endcan</div>
                             @empty <p class="text-muted">No fees configured.</p> @endforelse

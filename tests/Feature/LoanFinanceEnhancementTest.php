@@ -9,6 +9,7 @@ use App\Models\JournalEntry;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanInstallment;
+use App\Models\LoanProduct;
 use App\Models\LoanProductVersion;
 use App\Models\NumberSequence;
 use App\Models\PaymentSubmission;
@@ -24,6 +25,7 @@ use App\Services\RepaymentReversalService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AccountingPeriodSeeder;
 use Database\Seeders\ChartOfAccountSeeder;
+use Database\Seeders\ProfessionalLoanProductSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\SystemSettingSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,18 +45,19 @@ test('customers can find payment forms from the dashboard and payments menu with
         ->assertOk()->assertSee('Add payment')->assertSee(route('portal.payments.index'));
     $this->get(route('portal.payments.index'))->assertOk()
         ->assertSee(route('portal.loans.show', $loan).'#payment-form', false)
-        ->assertSee(route('portal.applications.show', $this->application).'#payment-form', false)
+        ->assertSee('Assurance is included in loan installments')
         ->assertDontSee($otherLoan->loan_number);
     $this->get(route('portal.loans.show', $loan))->assertOk()->assertSee('id="payment-form"', false)->assertSee('Submit payment for approval');
     $loan->update(['status' => LoanStatus::Settled]);
     $this->get(route('portal.payments.index'))->assertOk()->assertDontSee($loan->loan_number)->assertSee('No loans are currently accepting repayments');
 });
 
-test('staff payment and import shortcuts appear only inside quick actions and respect permissions', function (): void {
+test('staff payment and import shortcuts respect permissions and import appears in navigation', function (): void {
     $response = $this->actingAs($this->staff)->get(route('dashboard'))->assertOk();
     $document = new DOMDocument;
     @$document->loadHTML($response->getContent());
     $xpath = new DOMXPath($document);
+    expect($xpath->query('//nav[@aria-label="Primary navigation"]//a[@href="'.route('loan-imports.index').'"]')->length)->toBe(1);
     foreach (['payment-submissions.index', 'loan-imports.index'] as $route) {
         $url = route($route);
         expect($xpath->query('//section[contains(@class,"quick-panel")]//a[@href="'.$url.'"]')->length)->toBe(1)
@@ -97,18 +100,23 @@ test('assurance defaults to three percent and optional processing fees reduce on
     expect($quote['assurance_amount'])->toBe(1500.0)->and($quote['estimated_net_disbursement'])->toBe(50000.0);
     $this->version->fees()->create(['name' => 'Processing fee', 'calculation_method' => 'Fixed', 'value' => 10000, 'collection_point' => 'Disbursement', 'is_financed' => false]);
     $quote = app(LoanQuotationService::class)->quote($this->version->fresh(), 50000, 1, 1000000, 0, 0);
-    expect($quote['estimated_net_disbursement'])->toBe(40000.0)->and($quote['principal'])->toBe(50000.0)->and($quote['total_customer_cost'])->toBe($quote['total_repayment'] + 11500);
+    expect($quote['estimated_net_disbursement'])->toBe(40000.0)->and($quote['principal'])->toBe(50000.0)->and($quote['total_customer_cost'])->toBe($quote['total_repayment'] + 10000);
 });
 
-test('disbursement waits for approved assurance and deducts processing fees', function (): void {
-    $service = app(LoanDisbursementService::class);
-    expect(fn () => $service->prepare($this->application, $this->staff, 'Bank'))->toThrow(DomainException::class, 'assurance');
-    $submission = PaymentSubmission::factory()->create(['loan_application_id' => $this->application->id]);
-    expect(fn () => $service->prepare($this->application, $this->staff, 'Bank'))->toThrow(DomainException::class, 'assurance');
-    app(PaymentSubmissionService::class)->review($submission, $this->staff, 'Approved', null);
+test('disbursement deducts processing once and schedules assurance without advance payment', function (): void {
+    $this->application->update(['requested_amount' => 500000, 'approved_amount' => 500000, 'requested_term' => 3]);
     $this->version->fees()->create(['name' => 'Processing fee', 'calculation_method' => 'Fixed', 'value' => 10000, 'collection_point' => 'Disbursement', 'is_financed' => false]);
+    $service = app(LoanDisbursementService::class);
     $disbursement = $service->prepare($this->application, $this->staff, 'Bank');
-    expect($disbursement->net_amount)->toBe('40000.00')->and($disbursement->gross_amount)->toBe('50000.00');
+    expect($disbursement->net_amount)->toBe('490000.00')->and($disbursement->gross_amount)->toBe('500000.00');
+    $authorizer = User::factory()->create(['branch_id' => $this->staff->branch_id]);
+    $loan = $service->authorize($disbursement, $authorizer, CarbonImmutable::today()->addMonth());
+    $quote = app(LoanQuotationService::class)->quote($this->version->fresh(), 500000, 3, 1000000, 0, 0);
+    expect((float) $loan->installments()->sum('fees_due'))->toBe(15000.0)
+        ->and((float) $loan->installments()->sum('principal_due'))->toBe(500000.0)
+        ->and((float) $loan->installments()->sum('interest_due'))->toBe($quote['total_interest'])
+        ->and($loan->installments->sum(fn ($row) => (float) $row->principal_due + (float) $row->interest_due + (float) $row->fees_due))->toBe($quote['total_repayment']);
+    expect(app(DashboardMetricsService::class)->summary($this->staff->branch_id)['loanIncome'])->toBe(10000.0);
 });
 
 test('customer payment remains pending until authorized approval and cannot post twice', function (): void {
@@ -252,11 +260,11 @@ test('spreadsheet preview saves nothing until confirmation and screens render', 
     $this->get(route('dashboard'))->assertOk()->assertSee('Net lending profit');
     $this->get(route('payment-submissions.index'))->assertOk();
     $this->actingAs($this->customer, 'customer')->get(route('portal.loans.show', Loan::firstOrFail()))->assertOk()->assertSee('Submit payment for approval');
-    $this->get(route('portal.applications.show', $this->application))->assertOk()->assertSee('Record assurance payment');
+    $this->get(route('portal.applications.show', $this->application))->assertOk()->assertDontSee('Record assurance payment')->assertSee('included in loan installments');
 });
 
 test('product version form creates optional deducted fees and assurance terms', function (): void {
-    $data = ['minimum_amount' => 20000, 'maximum_amount' => 100000, 'minimum_term' => 1, 'maximum_term' => 12, 'term_unit' => 'Months', 'interest_method' => 'Flat', 'interest_rate_percent' => 10, 'rate_basis' => 'Whole Term', 'repayment_frequency' => 'Monthly', 'principal_grace_period' => 0, 'interest_grace_period' => 0, 'required_guarantors' => 0, 'maximum_installment_ratio_percent' => 50, 'effective_from' => today()->addDay()->toDateString(), 'assurance_percent' => 3, 'processing_fee' => 10000];
+    $data = ['minimum_amount' => 10000, 'maximum_amount' => 100000, 'minimum_term' => 1, 'maximum_term' => 12, 'term_unit' => 'Months', 'interest_method' => 'Flat', 'interest_rate_percent' => 10, 'rate_basis' => 'Whole Term', 'repayment_frequency' => 'Monthly', 'principal_grace_period' => 0, 'interest_grace_period' => 0, 'required_guarantors' => 0, 'maximum_installment_ratio_percent' => 50, 'effective_from' => today()->addDay()->toDateString(), 'assurance_percent' => 3, 'processing_fee' => 10000];
     $this->actingAs($this->staff)->post(route('loan-products.versions.store', $this->version->product), $data)->assertSessionHasNoErrors();
     $version = $this->version->product->versions()->latest('version')->first();
     expect((float) $version->assurance_percent)->toBe(3.0)->and($version->fees()->first()->collection_point)->toBe('Disbursement');
@@ -273,12 +281,8 @@ test('a product can disable assurance and processing fees and never disburse neg
     expect(app(LoanDisbursementService::class)->prepare($this->application, $this->staff, 'Bank')->net_amount)->toBe('50000.00');
 });
 
-test('assurance submission approval and loan authorization post the exact payout and income', function (): void {
-    $this->actingAs($this->customer, 'customer')->post(route('portal.assurance.store', $this->application), [
-        'amount' => 1500, 'payment_method' => 'Bank', 'external_reference' => 'ASSURANCE-001', 'paid_at' => today()->toDateString(),
-        'attachment' => UploadedFile::fake()->create('receipt.pdf', 10, 'application/pdf'),
-    ])->assertSessionHasNoErrors();
-    $submission = PaymentSubmission::firstOrFail();
+test('previous assurance approval and loan authorization post the exact payout and income', function (): void {
+    $submission = PaymentSubmission::factory()->create(['loan_application_id' => $this->application->id, 'customer_id' => $this->customer->id, 'amount' => 1500]);
     app(PaymentSubmissionService::class)->review($submission, $this->staff, 'Approved', null);
     $this->version->fees()->create(['name' => 'Processing fee', 'calculation_method' => 'Fixed', 'value' => 10000, 'collection_point' => 'Disbursement', 'is_financed' => false]);
     $service = app(LoanDisbursementService::class);
@@ -353,4 +357,27 @@ test('historical loans with paid principal stay payable until all remaining char
     $rest = PaymentSubmission::factory()->create(['loan_application_id' => $loan->loan_application_id, 'loan_id' => $loan->id, 'purpose' => 'Repayment', 'amount' => 4000]);
     app(PaymentSubmissionService::class)->review($rest, $this->staff, 'Approved', null);
     expect($loan->fresh()->status)->toBe(LoanStatus::Settled);
+});
+
+test('duplicate processing fees cannot be added to an unused version', function (): void {
+    $this->staff->givePermissionTo('loan-product.fee.manage');
+    $version = LoanProductVersion::factory()->create();
+    $version->fees()->create(['name' => 'Processing Fee', 'calculation_method' => 'Fixed', 'value' => 10000, 'collection_point' => 'Disbursement', 'is_financed' => false]);
+    $this->actingAs($this->staff)->post(route('loan-product-versions.fees.store', $version), [
+        'name' => ' processing fee ', 'calculation_method' => 'Fixed', 'value' => 10000, 'collection_point' => 'Disbursement',
+    ])->assertSessionHasErrors('name');
+    expect($version->fees()->count())->toBe(1);
+});
+
+test('customers cannot submit separate assurance payments', function (): void {
+    $this->actingAs($this->customer, 'customer')->post(route('portal.assurance.store', $this->application), [
+        'amount' => 1500, 'payment_method' => 'Bank', 'external_reference' => 'ASSURANCE-NEW', 'paid_at' => today()->toDateString(),
+    ])->assertStatus(422);
+    expect(PaymentSubmission::count())->toBe(0);
+});
+
+test('standard product seeding does not add a hardcoded processing fee', function (): void {
+    $this->seed(ProfessionalLoanProductSeeder::class);
+    $product = LoanProduct::where('code', 'STANDARD-MICRO')->firstOrFail();
+    expect($product->versions()->firstOrFail()->fees()->count())->toBe(0);
 });

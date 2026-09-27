@@ -1,10 +1,12 @@
 <?php
 
 use App\Models\Loan;
+use App\Models\LoanApplication;
 use App\Models\LoanProductVersion;
 use App\Models\Repayment;
 use App\Models\User;
 use App\Services\LoanQuotationService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -34,4 +36,31 @@ test('repayment receipt downloads through the shared a4 pdf renderer', function 
     $this->actingAs($user)->get(route('repayments.pdf', $repayment))
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf');
+});
+
+test('shared pdf layout uses the reference letterhead typography and tables', function (): void {
+    $html = view('pdf.report', [
+        'report' => 'portfolio',
+        'definition' => ['label' => 'Portfolio', 'group_label' => 'Loan portfolio summary'],
+        'metrics' => ['active_loans' => 5, 'outstanding_principal' => 500000, 'collections' => 20000, 'open_cases' => 0, 'debits' => 500000, 'credits' => 500000],
+    ])->render();
+    expect($html)->toContain('Times New Roman', 'institution-header', 'document-footer', 'pdf-watermark', 'Portfolio Report');
+    $pdf = Pdf::loadHTML($html)->setPaper('a4')->output();
+    expect($pdf)->toStartWith('%PDF-');
+    if (getenv('PDF_PREVIEW_PATH')) {
+        file_put_contents(getenv('PDF_PREVIEW_PATH'), $pdf);
+    }
+});
+
+test('loan dossier renders a multi page repayment schedule with financed assurance', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->assignRole('System Administrator');
+    $application = LoanApplication::factory()->create(['branch_id' => $user->branch_id, 'requested_amount' => 500000, 'requested_term' => 24]);
+    $response = $this->actingAs($user)->get(route('loan-applications.pdf', $application))
+        ->assertOk()->assertHeader('content-type', 'application/pdf');
+    expect($response->getContent())->toStartWith('%PDF-');
+    if (getenv('PDF_PREVIEW_PATH')) {
+        file_put_contents(getenv('PDF_PREVIEW_PATH').'.dossier.pdf', $response->getContent());
+    }
 });

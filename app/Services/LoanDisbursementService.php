@@ -45,10 +45,6 @@ class LoanDisbursementService
             }
 
             $gross = (float) $application->approved_amount;
-            $assurancePaid = (float) $application->paymentSubmissions()->where('purpose', 'Assurance')->where('status', 'Approved')->sum('amount');
-            if ($assurancePaid < $application->assuranceAmount()) {
-                throw new DomainException('The required assurance payment must be approved before disbursement.');
-            }
             $fees = $application->productVersion->fees->where('collection_point', 'Disbursement')->where('is_financed', false)->sum(function ($fee) use ($gross): float {
                 return $fee->calculation_method === 'Percentage' ? $gross * (float) $fee->value : (float) $fee->value;
             });

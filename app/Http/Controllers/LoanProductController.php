@@ -14,6 +14,7 @@ use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class LoanProductController extends Controller implements HasMiddleware
@@ -93,7 +94,7 @@ class LoanProductController extends Controller implements HasMiddleware
             'requires_collateral' => ['nullable', 'boolean'], 'maximum_installment_ratio_percent' => ['required', 'numeric', 'gt:0', 'max:100'],
             'effective_from' => ['required', 'date'],
             'assurance_percent' => ['sometimes', 'required', 'numeric', 'decimal:0,4', 'min:0', 'max:100'],
-            'processing_fee' => ['sometimes', 'required', 'numeric', 'decimal:0,2', 'min:0', 'lt:minimum_amount'],
+            'processing_fee' => ['sometimes', 'required', 'numeric', 'decimal:0,2', 'min:0', 'lt:maximum_amount'],
         ]);
 
         DB::transaction(function () use ($request, $loanProduct, $validated): void {
@@ -129,6 +130,10 @@ class LoanProductController extends Controller implements HasMiddleware
     {
         abort_if($loanProductVersion->loanApplications()->exists(), 422, 'Create a new product version to change fees used by applications.');
         $validated = $request->validate(['name' => ['required', 'string', 'max:150'], 'calculation_method' => ['required', 'in:Fixed,Percentage'], 'value' => ['required', 'numeric', 'gt:0'], 'collection_point' => ['required', 'in:Disbursement,Installment,Upfront'], 'is_financed' => ['nullable', 'boolean']]);
+        $validated['name'] = trim($validated['name']);
+        if ($loanProductVersion->fees()->whereRaw('LOWER(name) = ?', [strtolower($validated['name'])])->exists()) {
+            throw ValidationException::withMessages(['name' => 'This fee is already configured. Remove the existing fee before replacing it.']);
+        }
         $loanProductVersion->fees()->create($validated + ['is_financed' => $request->boolean('is_financed')]);
 
         return back()->with('success', 'Product fee configured.');

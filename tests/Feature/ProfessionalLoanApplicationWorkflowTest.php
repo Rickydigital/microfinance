@@ -32,8 +32,8 @@ test('quotation explains formulas and includes configured fees', function (): vo
         'monthly_expenses' => 100000,
         'existing_debt_payment' => 0,
     ])->assertOk()->assertJsonPath('principal', 1000000)
-        ->assertJsonPath('total_fees', 20000)
-        ->assertJsonCount(1, 'fees')
+        ->assertJsonPath('total_fees', 50000)
+        ->assertJsonCount(2, 'fees')
         ->assertJsonStructure(['formula', 'affordability_formula', 'policy', 'total_interest', 'total_repayment']);
 
     expect(round(collect($response->json('projected_schedule'))->sum('principal'), 2))->toEqual(1000000.0)

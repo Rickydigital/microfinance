@@ -40,16 +40,6 @@ class ProfessionalLoanProductSeeder extends Seeder
             ],
         );
 
-        $version->fees()->updateOrCreate(
-            ['name' => 'Processing Fee'],
-            [
-                'calculation_method' => 'Fixed',
-                'value' => 10000,
-                'collection_point' => 'Disbursement',
-                'is_financed' => false,
-            ],
-        );
-
         $version->penaltyRules()->updateOrCreate(
             ['name' => 'Late Payment Penalty'],
             [

@@ -19,10 +19,10 @@ test('quotation exposes numeric interest workings and distributes configured fee
 
     expect($quote['annual_interest_rate'])->toBe(0.24)
         ->and($quote['periodic_rate'])->toBe(0.02)
-        ->and($quote['total_fees'])->toBe(4000.0)
+        ->and($quote['total_fees'])->toBe(10000.0)
         ->and($quote['projected_schedule'][0]['interest'])->toBe(4000.0)
         ->and($quote['projected_schedule'][0]['interest_calculation'])->toContain('200,000.00 × 2.000000% = 4,000.00')
-        ->and(collect($quote['projected_schedule'])->sum('fees'))->toBe(4000.0);
+        ->and(collect($quote['projected_schedule'])->sum('fees'))->toBe(10000.0);
 });
 
 test('repayment selection hides fully paid loans and can search unpaid loans', function (): void {

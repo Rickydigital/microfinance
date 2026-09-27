@@ -31,9 +31,7 @@ class PaymentSubmissionController extends Controller
     public function storeAssurance(Request $request, LoanApplication $loanApplication): RedirectResponse
     {
         abort_unless($loanApplication->customer_id === $request->user('customer')->id, 404);
-        abort_unless($loanApplication->status === LoanApplicationStatus::Approved, 422, 'Assurance is payable after loan approval.');
-
-        return $this->store($request, $loanApplication);
+        abort(422, 'Assurance is included in loan installments. Submit a loan repayment after disbursement.');
     }
 
     private function store(Request $request, LoanApplication $application, ?Loan $loan = null): RedirectResponse

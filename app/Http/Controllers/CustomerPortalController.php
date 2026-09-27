@@ -107,11 +107,8 @@ class CustomerPortalController extends Controller
         $customer = $request->user('customer');
         $loans = $customer->loans()->with('application.productVersion.product')
             ->whereIn('status', ['Active', 'In Arrears'])->latest()->get();
-        $applications = $customer->loanApplications()->with('productVersion.product')
-            ->where('status', LoanApplicationStatus::Approved)->get()
-            ->filter(fn (LoanApplication $application): bool => $application->assuranceAmount() > 0);
 
-        return view('portal.payments', compact('loans', 'applications'));
+        return view('portal.payments', compact('loans'));
     }
 
     public function showLoan(Request $request, Loan $loan): View

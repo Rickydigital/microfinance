@@ -24,7 +24,7 @@
     </tr>
 </table>
 
-<p style="color:#64748b;font-style:italic;">
+<p style="color:#333;font-style:italic;">
     This report contains live values calculated from posted operational and accounting records at generation time and is intended for internal management use only.
 </p>
 

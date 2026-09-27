@@ -69,6 +69,7 @@ return [
         ['label' => 'Approval queue', 'icon' => 'mdi-check-decagram-outline', 'route' => 'loan-approvals.index', 'permission' => 'loan.approval.view'],
         ['label' => 'Disbursements', 'icon' => 'mdi-bank-transfer-out', 'route' => 'loan-disbursements.index', 'permission' => 'loan.disbursement.view'],
         ['label' => 'Active loans', 'icon' => 'mdi-cash-multiple', 'route' => 'loans.index', 'permission' => 'loan.view'],
+        ['label' => 'Import historical loans', 'icon' => 'mdi-file-excel-outline', 'route' => 'loan-imports.index', 'permission' => 'loan.import'],
         ['label' => 'Collections', 'icon' => 'mdi-calendar-alert', 'route' => 'collection-cases.index', 'permission' => 'collection.case.view'],
         ['label' => 'Guarantors', 'icon' => 'mdi-account-check-outline', 'route' => 'guarantors.index', 'permission' => 'guarantor.view'],
         ['label' => 'Collateral', 'icon' => 'mdi-home-lock', 'route' => 'collaterals.index', 'permission' => 'collateral.view'],

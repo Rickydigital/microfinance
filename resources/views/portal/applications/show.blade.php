@@ -58,12 +58,10 @@
 <div class="section-title">Calculation</div>
 <div class="card card-pad" style="margin:22px 0;">
     <h2>Assurance: {{ number_format($quote['assurance_percent'], 2) }}%</h2>
-    <p>{{ number_format($quote['assurance_amount'], 2) }} payable separately before disbursement. Non-refundable.</p>
+    <p>{{ number_format($quote['assurance_amount'], 2) }} included in loan installments without extra interest. No separate payment is required before disbursement.</p>
     <p>Approved assurance payments: {{ number_format((float) $loanApplication->paymentSubmissions()->where('purpose', 'Assurance')->where('status', 'Approved')->sum('amount'), 2) }}</p>
 </div>
-@if ($loanApplication->status === \App\LoanApplicationStatus::Approved && $quote['assurance_amount'] > 0)
-    @include('portal.payment-form', ['paymentTitle' => 'Record assurance payment', 'paymentAction' => route('portal.assurance.store', $loanApplication)])
-@endif
+
 @include('portal.payment-submissions', ['paymentSubmissions' => $loanApplication->paymentSubmissions()->where('purpose', 'Assurance')->latest()->get()])
 <div class="card card-pad" style="margin-bottom:6px;">
     <p style="font-weight:600;font-size:15px;margin-bottom:6px;">{{ number_format($quote['annual_interest_rate']*100,2) }}% {{ $quote['rate_basis'] }} · {{ $quote['interest_method'] }}</p>

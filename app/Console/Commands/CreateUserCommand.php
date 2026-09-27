@@ -17,7 +17,7 @@ use Spatie\Permission\Models\Role;
     {--first-name= : Employee first name}
     {--middle-name= : Employee middle name}
     {--last-name= : Employee last name}
-    {--email= : Unique login email}
+    {--email= : Uniqu e login email}
     {--phone= : Employee phone number}
     {--staff-number= : Unique staff number}
     {--gender= : Male, Female, or Other}

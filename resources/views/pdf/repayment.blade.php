@@ -19,7 +19,7 @@
 
 <table class="grid" style="margin-top:4px">
     <tr>
-        <td style="background:#0f2942;color:#fff;text-align:right;font-size:16px;font-weight:bold;border:none;padding:12px 14px;">
+        <td style="background:#f5f5f5;color:#000;text-align:right;font-size:16px;font-weight:bold;border:1px solid #b5b5b5;padding:12px 14px;">
             {{ config('microfinance.currency') }} {{ number_format((float)$repayment->amount,2) }}
         </td>
     </tr>

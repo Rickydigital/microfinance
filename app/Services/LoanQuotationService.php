@@ -29,6 +29,10 @@ class LoanQuotationService
         })->values();
         $totalFees = $fees->sum('amount');
         $assurance = round($amount * (float) $version->assurance_percent / 100, 2);
+        if ($assurance > 0) {
+            $fees->push(['name' => 'Assurance', 'amount' => $assurance, 'collection_point' => 'Installment', 'is_financed' => true]);
+        }
+        $totalFees += $assurance;
         $scheduledFees = $fees->filter(fn (array $fee): bool => $fee['collection_point'] === 'Installment' || $fee['is_financed'])->sum('amount');
         $schedule = $this->applyScheduledFees($schedule, $scheduledFees);
         $installment = collect($schedule)->max('installment');
@@ -54,8 +58,8 @@ class LoanQuotationService
             'total_fees' => round($totalFees, 2),
             'assurance_percent' => (float) $version->assurance_percent,
             'assurance_amount' => $assurance,
-            'total_repayment' => round($totalRepaymentBeforeFees, 2),
-            'total_customer_cost' => round($totalRepaymentBeforeFees + $totalFees + $assurance, 2),
+            'total_repayment' => round($totalRepaymentBeforeFees + $scheduledFees, 2),
+            'total_customer_cost' => round($totalRepaymentBeforeFees + $totalFees, 2),
             'estimated_net_disbursement' => round(max(0, $amount - $deductedFees), 2),
             'projected_schedule' => $schedule,
             'disposable_income' => round($disposableIncome, 2),
@@ -63,6 +67,7 @@ class LoanQuotationService
             'recommended_amount' => round(max(0, $recommendedAmount), 2),
             'installment_ratio' => $disposableIncome > 0 ? round($installment / $disposableIncome, 4) : 999,
             'affordable' => $installment <= $maximumInstallment
+                && $deductedFees < $amount
                 && $amount >= (float) $version->minimum_amount
                 && $amount <= (float) $version->maximum_amount
                 && $term >= $version->minimum_term

@@ -29,6 +29,8 @@ class LoanScheduleService
             $scheduledFeeMinor = $version->fees
                 ->filter(fn ($fee): bool => $fee->collection_point === 'Installment' || $fee->is_financed)
                 ->sum(fn ($fee): int => $this->toMinorUnits($fee->calculation_method === 'Percentage' ? (float) $loan->principal_amount * (float) $fee->value : $fee->value));
+            $assurancePaid = (float) $loan->application->paymentSubmissions()->where('purpose', 'Assurance')->where('status', 'Approved')->sum('amount');
+            $scheduledFeeMinor += $this->toMinorUnits(max(0, $loan->application->assuranceAmount() - $assurancePaid));
             $feeBase = intdiv($scheduledFeeMinor, $periods);
             $feeRemainder = $scheduledFeeMinor - ($feeBase * $periods);
 
