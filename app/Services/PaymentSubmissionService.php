@@ -8,6 +8,7 @@ use App\Models\LoanApplication;
 use App\Models\NumberSequence;
 use App\Models\PaymentSubmission;
 use App\Models\User;
+use App\Notifications\StaffWorkflowNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -63,5 +64,13 @@ class PaymentSubmissionService
             }
             $submission->fill(['status' => $decision, 'reviewed_by' => $reviewer->id, 'reviewed_at' => now(), 'review_notes' => $notes])->save();
         }, 3);
+    }
+
+    public function notifyReviewers(PaymentSubmission $submission): void
+    {
+        $submission->loadMissing('application');
+        User::query()->where('is_active', true)->permission('repayment.approve')
+            ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $submission->application->branch_id))->get()
+            ->each(fn (User $user) => $user->notify(new StaffWorkflowNotification('Payment awaiting approval', 'A '.$submission->purpose.' payment of '.number_format((float) $submission->amount, 2).' for application '.$submission->application->application_number.' is waiting for review.', 'payment_approval')));
     }
 }

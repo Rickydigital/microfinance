@@ -7,6 +7,7 @@ use App\Models\ApprovalRule;
 use App\Models\LoanApplication;
 use App\Models\LoanApproval;
 use App\Models\User;
+use App\Notifications\StaffWorkflowNotification;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -41,6 +42,10 @@ class ApprovalWorkflowService
             }
 
             $application->update(['status' => LoanApplicationStatus::PendingApproval]);
+            $role = $rules->first()->role_name;
+            User::query()->where('is_active', true)->whereHasRole($role)
+                ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $application->branch_id))->get()
+                ->each(fn (User $user) => $user->notify(new StaffWorkflowNotification('Loan awaiting approval', 'Loan application '.$application->application_number.' from your branch is waiting for '.$role.' approval.', 'loan_approval')));
         });
     }
 

@@ -92,7 +92,7 @@ function financeTestLoan(object $test): Loan
 /** @return array<string, mixed> */
 function financeImportRow(object $test): array
 {
-    return array_combine(HistoricalLoanImportService::HEADERS, ['OLD-001', $test->customer->customer_number, $test->version->product->code, 1, 50000, 40000, 11500, '2025-01-01', 1, '2025-02-01', 50000, 5000, 0, 0, 20000, 5000, 0, 0]) + ['_row' => 2];
+    return array_combine(HistoricalLoanImportService::HEADERS, ['OLD-001', $test->customer->customer_number, $test->version->product->code, 1, 50000, 40000, 10000, '2025-01-01', 20000, 'Active']) + ['_row' => 2];
 }
 
 test('assurance defaults to three percent and optional processing fees reduce only payout', function (): void {
@@ -233,12 +233,12 @@ test('historical import preserves balances and rejects duplicates and invalid ro
     $service = app(HistoricalLoanImportService::class);
     $invalid = $row;
     $invalid['loan_number'] = 'OLD-002';
-    $invalid['principal_paid'] = 60000;
+    $invalid['total_paid'] = 60000;
     expect(fn () => $service->import([$row, $invalid], $this->staff))->toThrow(ValidationException::class);
     expect(Loan::count())->toBe(0);
     expect($service->import([$row], $this->staff))->toBe(1);
     $loan = Loan::firstOrFail();
-    expect($loan->outstanding_principal)->toBe('30000.00')->and($loan->arrears_amount)->toBe('30000.00')->and($loan->repayments()->count())->toBe(0);
+    expect($loan->outstanding_principal)->toBe('30000.00')->and($loan->repayments()->count())->toBe(0);
     $metrics = app(DashboardMetricsService::class)->summary($this->staff->branch_id);
     expect($metrics['cashDisbursed'])->toBe(40000.0)->and($metrics['loanIncome'])->toBe(16500.0)->and($metrics['principalRecovered'])->toBe(20000.0);
     expect(fn () => $service->import([$row], $this->staff))->toThrow(ValidationException::class);

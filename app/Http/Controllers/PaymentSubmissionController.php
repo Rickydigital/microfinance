@@ -46,14 +46,15 @@ class PaymentSubmissionController extends Controller
         $file = $request->file('attachment');
         $path = $file?->store('payment-evidence', 'local');
         abort_if($file !== null && $path === false, 500, 'Payment evidence could not be stored.');
+        $referenceKey = hash('sha256', $validated['payment_method'].'|'.strtoupper(trim($validated['external_reference'])));
         try {
-            DB::transaction(function () use ($validated, $application, $loan, $path): void {
+            DB::transaction(function () use ($validated, $application, $loan, $path, $referenceKey): void {
                 $application = LoanApplication::query()->lockForUpdate()->findOrFail($application->id);
                 $reference = trim($validated['external_reference']);
                 if ($reference === '') {
                     throw ValidationException::withMessages(['external_reference' => 'Enter the payment reference.']);
                 }
-                $key = hash('sha256', $validated['payment_method'].'|'.strtoupper($reference));
+                $key = $referenceKey;
                 if (PaymentSubmission::query()->where('reference_key', $key)->exists()) {
                     throw ValidationException::withMessages(['external_reference' => 'This payment reference has already been submitted.']);
                 }
@@ -76,6 +77,8 @@ class PaymentSubmissionController extends Controller
             }
             throw $exception;
         }
+
+        app(PaymentSubmissionService::class)->notifyReviewers(PaymentSubmission::query()->where('reference_key', $referenceKey)->firstOrFail());
 
         return back()->with('success', 'Payment submitted. It will count only after staff approval.');
     }

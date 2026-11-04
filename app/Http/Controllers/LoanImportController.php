@@ -51,9 +51,9 @@ class LoanImportController extends Controller
         $groups = $service->validate($rows, $request->user());
         $token = (string) Str::uuid();
         $request->session()->put('loan_import_preview', ['token' => $token, 'user_id' => $request->user()->id, 'expires_at' => time() + 1800, 'rows' => $rows]);
-        $preview = collect($groups)->map(fn ($items): array => [
-            'customer' => $items[0]['customer_number'], 'principal' => $items[0]['principal_amount'],
-            'principal_paid' => collect($items)->sum('principal_paid'), 'installments' => count($items),
+        $preview = collect($groups)->map(fn ($item): array => [
+            'customer' => $item['customer_number'], 'principal' => $item['principal_amount'],
+            'principal_paid' => $item['total_paid'], 'status' => $item['status'],
         ]);
 
         return view('loans.import', compact('preview', 'token'));
