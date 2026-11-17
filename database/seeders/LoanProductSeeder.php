@@ -41,7 +41,7 @@ class LoanProductSeeder extends Seeder
 
         ProductFee::query()->updateOrCreate(
             ['loan_product_version_id' => $version->id, 'name' => 'Processing Fee'],
-            ['calculation_method' => 'Percentage', 'value' => 0.02, 'collection_point' => 'Disbursement', 'is_financed' => false],
+            ['calculation_method' => 'Fixed', 'value' => 15000, 'collection_point' => 'Installment', 'is_financed' => true],
         );
 
         foreach ([

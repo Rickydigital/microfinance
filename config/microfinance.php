@@ -35,6 +35,7 @@ return [
     | Read directly and base64-inlined by the PDF layout for dompdf reliability.
     */
     'logo_path' => env('MFI_LOGO_PATH', public_path('images/logo.png')),
+    'secondary_logo_path' => env('MFI_SECONDARY_LOGO_PATH', public_path('images/logo-secondary.png')),
 
     /*
     |--------------------------------------------------------------------------
@@ -64,17 +65,28 @@ return [
     */
     'navigation' => [
         ['label' => 'Dashboard', 'icon' => 'mdi-view-dashboard-outline', 'route' => 'dashboard', 'permission' => 'dashboard.view'],
-        ['label' => 'Customers', 'icon' => 'mdi-account-group-outline', 'route' => 'customers.index', 'permission' => 'customer.view'],
-        ['label' => 'Applications', 'icon' => 'mdi-file-document-edit-outline', 'route' => 'loan-applications.index', 'permission' => 'loan.application.view'],
-        ['label' => 'Approval queue', 'icon' => 'mdi-check-decagram-outline', 'route' => 'loan-approvals.index', 'permission' => 'loan.approval.view'],
-        ['label' => 'Disbursements', 'icon' => 'mdi-bank-transfer-out', 'route' => 'loan-disbursements.index', 'permission' => 'loan.disbursement.view'],
-        ['label' => 'Active loans', 'icon' => 'mdi-cash-multiple', 'route' => 'loans.index', 'permission' => 'loan.view'],
-        ['label' => 'Import historical loans', 'icon' => 'mdi-file-excel-outline', 'route' => 'loan-imports.index', 'permission' => 'loan.import'],
-        ['label' => 'Collections', 'icon' => 'mdi-calendar-alert', 'route' => 'collection-cases.index', 'permission' => 'collection.case.view'],
-        ['label' => 'Guarantors', 'icon' => 'mdi-account-check-outline', 'route' => 'guarantors.index', 'permission' => 'guarantor.view'],
-        ['label' => 'Collateral', 'icon' => 'mdi-home-lock', 'route' => 'collaterals.index', 'permission' => 'collateral.view'],
-        ['label' => 'Till operations', 'icon' => 'mdi-cash-register', 'route' => 'till-sessions.index', 'permission' => 'till.view'],
-        ['label' => 'Repayments', 'icon' => 'mdi-receipt-text-outline', 'route' => 'repayments.index', 'permission' => 'repayment.view'],
+        ['label' => 'Customer management', 'icon' => 'mdi-account-group-outline', 'items' => [
+            ['label' => 'All customers', 'route' => 'customers.index', 'permission' => 'customer.view'],
+            ['label' => 'Guarantors', 'route' => 'guarantors.index', 'permission' => 'guarantor.view'],
+            ['label' => 'Collateral', 'route' => 'collaterals.index', 'permission' => 'collateral.view'],
+        ]],
+        ['label' => 'Loan management', 'icon' => 'mdi-cash-multiple', 'items' => [
+            ['label' => 'Applications', 'route' => 'loan-applications.index', 'permission' => 'loan.application.view'],
+            ['label' => 'Approval queue', 'route' => 'loan-approvals.index', 'permission' => 'loan.approval.view'],
+            ['label' => 'Disbursements', 'route' => 'loan-disbursements.index', 'permission' => 'loan.disbursement.view'],
+            ['label' => 'Active loans', 'route' => 'loans.index', 'permission' => 'loan.view'],
+            ['label' => 'Loan products', 'route' => 'loan-products.index', 'permission' => 'loan-product.view'],
+            ['label' => 'Loan calculator', 'route' => 'loan-calculator.index', 'permission' => 'loan.application.view'],
+        ]],
+        ['label' => 'Loan calendar', 'icon' => 'mdi-calendar-month-outline', 'route' => 'loan-operations.calendar', 'permission' => 'loan.view'],
+        ['label' => 'Loan ageing', 'icon' => 'mdi-timeline-alert-outline', 'route' => 'loan-operations.ageing', 'permission' => 'loan.view'],
+        ['label' => 'BOT Returns', 'icon' => 'mdi-bank-outline', 'route' => 'bot-returns.index', 'permission' => 'report.portfolio'],
+        ['label' => 'Collections & repayments', 'icon' => 'mdi-cash-sync', 'items' => [
+            ['label' => 'Collection cases', 'route' => 'collection-cases.index', 'permission' => 'collection.case.view'],
+            ['label' => 'Repayment records', 'route' => 'repayments.index', 'permission' => 'repayment.view'],
+            ['label' => 'Payment approvals', 'route' => 'payment-submissions.index', 'permission' => 'repayment.approve'],
+            ['label' => 'Till operations', 'route' => 'till-sessions.index', 'permission' => 'till.view'],
+        ]],
         ['label' => 'Finance', 'icon' => 'mdi-book-open-page-variant', 'items' => [
             ['label' => 'Chart of accounts', 'route' => 'finance.accounts.index', 'permission' => 'accounting.account.view'],
             ['label' => 'Journal entries', 'route' => 'finance.journals.index', 'permission' => 'accounting.journal.view'],
@@ -87,13 +99,14 @@ return [
             ['label' => 'Operational Reports', 'route' => 'reports.index', 'parameters' => ['report' => 'branch-performance'], 'permission' => 'report.operational'],
             ['label' => 'Audit & Compliance', 'route' => 'reports.index', 'parameters' => ['report' => 'audit-trail'], 'permission' => 'report.audit'],
         ]],
-        ['label' => 'Loan products', 'icon' => 'mdi-cog-outline', 'route' => 'loan-products.index', 'permission' => 'loan-product.view'],
-        ['label' => 'Approval rules', 'icon' => 'mdi-call-split', 'route' => 'approval-rules.index', 'permission' => 'loan.approval.view'],
-        ['label' => 'Employees', 'icon' => 'mdi-account-cog-outline', 'route' => 'users.index', 'permission' => 'admin.user.view'],
-        ['label' => 'Roles & permissions', 'icon' => 'mdi-shield-account-outline', 'route' => 'roles.index', 'permission' => 'admin.role.view'],
-        ['label' => 'Branches', 'icon' => 'mdi-office-building-outline', 'route' => 'branches.index', 'permission' => 'admin.branch.view'],
-        ['label' => 'Settings', 'icon' => 'mdi-tune-variant', 'route' => 'settings.index', 'permission' => 'admin.configuration.view'],
-        ['label' => 'Reference data', 'icon' => 'mdi-format-list-bulleted-type', 'route' => 'reference-data.index', 'permission' => 'admin.configuration.update'],
+        ['label' => 'Administration', 'icon' => 'mdi-cog-outline', 'items' => [
+            ['label' => 'Approval rules', 'route' => 'approval-rules.index', 'permission' => 'loan.approval.view'],
+            ['label' => 'Employees', 'route' => 'users.index', 'permission' => 'admin.user.view'],
+            ['label' => 'Roles & permissions', 'route' => 'roles.index', 'permission' => 'admin.role.view'],
+            ['label' => 'Branches', 'route' => 'branches.index', 'permission' => 'admin.branch.view'],
+            ['label' => 'Settings', 'route' => 'settings.index', 'permission' => 'admin.configuration.view'],
+            ['label' => 'Reference data', 'route' => 'reference-data.index', 'permission' => 'admin.configuration.update'],
+        ]],
     ],
 
     'reports' => [

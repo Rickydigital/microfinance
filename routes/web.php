@@ -1,12 +1,15 @@
 <?php
 
 use App\Http\Controllers\ApprovalRuleController;
+use App\Http\Controllers\BotReturnController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\CollateralController;
 use App\Http\Controllers\CollectionActionController;
 use App\Http\Controllers\CollectionCaseController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerExportController;
+use App\Http\Controllers\CustomerImportController;
 use App\Http\Controllers\CustomerKycController;
 use App\Http\Controllers\CustomerPortalAuthController;
 use App\Http\Controllers\CustomerPortalController;
@@ -16,9 +19,11 @@ use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\LoanApplicationController;
 use App\Http\Controllers\LoanApprovalController;
 use App\Http\Controllers\LoanAssessmentController;
+use App\Http\Controllers\LoanCalculatorController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\LoanDisbursementController;
 use App\Http\Controllers\LoanImportController;
+use App\Http\Controllers\LoanOperationsController;
 use App\Http\Controllers\LoanProductController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\NotificationController;
@@ -29,6 +34,7 @@ use App\Http\Controllers\ReferenceDataController;
 use App\Http\Controllers\RepaymentController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\SecurityRegisterImportController;
 use App\Http\Controllers\SystemSettingController;
 use App\Http\Controllers\TillSessionController;
 use App\Http\Controllers\UserController;
@@ -73,8 +79,20 @@ Route::middleware('auth')->group(function () {
     Route::get('loan-imports/template', [LoanImportController::class, 'template'])->middleware('can:loan.import')->name('loan-imports.template');
     Route::post('loan-imports', [LoanImportController::class, 'store'])->middleware('can:loan.import')->name('loan-imports.store');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+    Route::get('customers/import', [CustomerImportController::class, 'index'])
+        ->middleware('can:customer.create')->name('customers.import.index');
+    Route::get('customers/import/template', [CustomerImportController::class, 'template'])
+        ->middleware('can:customer.create')->name('customers.import.template');
+    Route::post('customers/import', [CustomerImportController::class, 'store'])
+        ->middleware('can:customer.create')->name('customers.import.store');
+    Route::get('customers/import/errors', [CustomerImportController::class, 'errors'])
+        ->middleware('can:customer.create')->name('customers.import.errors');
+    Route::get('customers/export/{format}', [CustomerExportController::class, 'index'])->where('format', 'pdf|xlsx')->middleware('can:customer.view')->name('customers.export');
+    Route::get('customers/{customer}/export/{format}', [CustomerExportController::class, 'show'])->where('format', 'pdf|xlsx')->middleware('can:customer.view')->name('customers.profile.export');
     Route::resource('customers', CustomerController::class);
+    Route::post('customers/{customer}/kyc/reject', [CustomerKycController::class, 'reject'])->middleware('can:customer.verify')->name('customers.kyc.reject');
     Route::post('customers/{customer}/verify', [CustomerKycController::class, 'verify'])->middleware('can:customer.verify')->name('customers.verify');
+    Route::patch('customers/{customer}/status', [CustomerController::class, 'setStatus'])->name('customers.status');
     Route::post('customers/{customer}/portal-password', [CustomerController::class, 'resetPortalPassword'])->name('customers.portal-password.reset');
     Route::post('customers/{customer}/addresses', [CustomerKycController::class, 'storeAddress'])->name('customers.addresses.store');
     Route::post('customers/{customer}/addresses/{address}/verify', [CustomerKycController::class, 'verifyAddress'])->name('customers.addresses.verify');
@@ -87,11 +105,19 @@ Route::middleware('auth')->group(function () {
     Route::get('customer-documents/{document}/download', [CustomerKycController::class, 'downloadDocument'])->name('customer-documents.download');
     Route::delete('customer-documents/{document}', [CustomerKycController::class, 'destroyDocument'])->name('customer-documents.destroy');
     Route::resource('guarantors', GuarantorController::class)->only(['index']);
-    Route::post('guarantors', fn () => back()->withErrors(['security' => 'Guarantors must be added from the Security section of a specific loan application.']))->name('guarantors.store');
+    Route::get('security-registers/{type}/import-template', [SecurityRegisterImportController::class, 'template'])->name('security-registers.import.template');
+    Route::post('security-registers/{type}/import', [SecurityRegisterImportController::class, 'store'])->name('security-registers.import.store');
+    Route::post('guarantors', [GuarantorController::class, 'storeRegister'])->name('guarantors.store');
+    Route::patch('guarantors/{guarantor}', [GuarantorController::class, 'updateRegister'])->name('guarantors.update');
+    Route::patch('guarantors/{guarantor}/status', [GuarantorController::class, 'setStatus'])->name('guarantors.status');
+    Route::post('guarantors/{guarantor}/loans', [GuarantorController::class, 'attach'])->name('guarantors.loans.attach');
+    Route::post('loan-applications/{loanApplication}/guarantors/attach-existing', [GuarantorController::class, 'attachExisting'])->name('loan-applications.guarantors.attach-existing');
     Route::post('loan-applications/{loanApplication}/guarantors', [GuarantorController::class, 'store'])->name('loan-applications.guarantors.store');
     Route::post('guarantors/{guarantor}/verify', [GuarantorController::class, 'verify'])->name('guarantors.verify');
     Route::resource('collaterals', CollateralController::class)->only(['index']);
-    Route::post('collaterals', fn () => back()->withErrors(['security' => 'Collateral must be added from the Security section of a specific loan application.']))->name('collaterals.store');
+    Route::post('collaterals', [CollateralController::class, 'storeRegister'])->name('collaterals.store');
+    Route::patch('collaterals/{collateral}', [CollateralController::class, 'updateRegister'])->name('collaterals.update');
+    Route::patch('collaterals/{collateral}/status', [CollateralController::class, 'setStatus'])->name('collaterals.status');
     Route::post('loan-applications/{loanApplication}/collaterals', [CollateralController::class, 'store'])->name('loan-applications.collaterals.store');
     Route::post('collaterals/{collateral}/verify', [CollateralController::class, 'verify'])->name('collaterals.verify');
     Route::post('loan-applications/{loanApplication}/submit', [LoanApplicationController::class, 'submit'])->name('loan-applications.submit');
@@ -108,6 +134,9 @@ Route::middleware('auth')->group(function () {
     Route::post('loan-disbursements', [LoanDisbursementController::class, 'store'])->name('loan-disbursements.store');
     Route::post('loan-disbursements/{loanDisbursement}/authorize', [LoanDisbursementController::class, 'authorize'])->name('loan-disbursements.authorize');
     Route::resource('loans', LoanController::class)->only(['index', 'show']);
+    Route::get('loan-calendar', [LoanOperationsController::class, 'calendar'])->name('loan-operations.calendar');
+    Route::get('loan-ageing', [LoanOperationsController::class, 'ageing'])->name('loan-operations.ageing');
+    Route::get('loan-calculator', LoanCalculatorController::class)->name('loan-calculator.index');
     Route::get('repayments/{repayment}/pdf', [PdfDocumentController::class, 'repayment'])->name('repayments.pdf');
     Route::post('loan-products/{loanProduct}/versions', [LoanProductController::class, 'storeVersion'])->name('loan-products.versions.store');
     Route::post('loan-product-versions/{loanProductVersion}/fees', [LoanProductController::class, 'storeFee'])->name('loan-product-versions.fees.store');
@@ -154,6 +183,9 @@ Route::middleware('auth')->group(function () {
     Route::put('finance/accounts/{account}', [ChartOfAccountController::class, 'update'])->name('finance.accounts.update');
     Route::delete('finance/accounts/{account}', [ChartOfAccountController::class, 'destroy'])->name('finance.accounts.destroy');
     Route::get('finance/journals', [JournalEntryController::class, 'index'])->name('finance.journals.index');
+    Route::get('bot-returns', [BotReturnController::class, 'index'])->name('bot-returns.index');
+    Route::get('bot-returns/export', [BotReturnController::class, 'export'])->name('bot-returns.export');
+    Route::get('bot-returns/pdf', [BotReturnController::class, 'pdf'])->name('bot-returns.pdf');
     Route::get('reports/{report}/export', [ReportController::class, 'export'])->name('reports.export');
     Route::get('reports/{report}/pdf', [PdfDocumentController::class, 'report'])->name('reports.pdf');
     Route::get('reports/{report?}', [ReportController::class, 'index'])->name('reports.index');

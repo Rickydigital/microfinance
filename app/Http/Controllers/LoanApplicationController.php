@@ -7,7 +7,9 @@ use App\Http\Requests\StoreLoanApplicationRequest;
 use App\Http\Requests\UpdateLoanApplicationRequest;
 use App\LoanApplicationStatus;
 use App\Models\Customer;
+use App\Models\Guarantor;
 use App\Models\IdentificationType;
+use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanProductVersion;
 use App\Models\NumberSequence;
@@ -43,13 +45,33 @@ class LoanApplicationController extends Controller implements HasMiddleware
      */
     public function index(Request $request): View
     {
-        $applications = LoanApplication::query()->with(['customer', 'productVersion.product'])
-            ->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId))
+        $branchId = $request->user()->branch_id;
+        $applicationScope = LoanApplication::query()->when($branchId, fn ($query, $branchId) => $query->where('branch_id', $branchId));
+        $applications = (clone $applicationScope)->with(['customer', 'creator', 'productVersion.product', 'disbursement'])
             ->when($request->string('search')->toString(), fn ($query, string $search) => $query->where(fn ($query) => $query->where('application_number', 'like', "%{$search}%")->orWhereHas('customer', fn ($customer) => $customer->where('customer_number', 'like', "%{$search}%")->orWhere('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"))))
             ->when($request->string('status')->toString(), fn ($query, string $status) => $query->where('status', $status))
+            ->when($request->integer('product_id'), fn ($query, int $productId) => $query->whereHas('productVersion', fn ($version) => $version->where('loan_product_id', $productId)))
+            ->when($request->date('from'), fn ($query, $from) => $query->whereDate('created_at', '>=', $from))
+            ->when($request->date('to'), fn ($query, $to) => $query->whereDate('created_at', '<=', $to))
             ->latest()->paginate(20)->withQueryString();
 
-        return view('loan-applications.index', compact('applications'));
+        $metrics = [
+            'total' => (clone $applicationScope)->count(),
+            'pending' => (clone $applicationScope)->whereIn('status', [LoanApplicationStatus::Submitted, LoanApplicationStatus::UnderAssessment, LoanApplicationStatus::Recommended, LoanApplicationStatus::PendingApproval])->count(),
+            'approved' => (clone $applicationScope)->whereIn('status', [LoanApplicationStatus::Approved, LoanApplicationStatus::ReadyForDisbursement])->count(),
+            'active_loans' => Loan::query()->when($branchId, fn ($query, $branchId) => $query->where('branch_id', $branchId))->whereIn('status', ['Active', 'In Arrears', 'Restructured'])->count(),
+        ];
+        $customers = Customer::query()->with(['economicProfiles' => fn ($query) => $query->whereNull('effective_to')])
+            ->when($branchId, fn ($query, $branchId) => $query->where('branch_id', $branchId))
+            ->where('status', CustomerStatus::Active)->orderBy('first_name')->get();
+        $productVersions = LoanProductVersion::query()->with(['product', 'fees'])
+            ->whereHas('product', fn ($query) => $query->where('is_active', true))
+            ->whereDate('effective_from', '<=', today())
+            ->where(fn ($query) => $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', today()))
+            ->orderBy('loan_product_id')->orderByDesc('version')->get();
+        $products = $productVersions->pluck('product')->unique('id')->values();
+
+        return view('loan-applications.index', compact('applications', 'metrics', 'customers', 'productVersions', 'products'));
     }
 
     /**
@@ -134,7 +156,19 @@ class LoanApplicationController extends Controller implements HasMiddleware
         $dossier = $presentation->build($loanApplication, $approvedQuote ?? $quote, $kyc);
         $identificationTypes = IdentificationType::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get();
 
-        return view('loan-applications.show', compact('loanApplication', 'latestAssessment', 'pendingApproval', 'quote', 'approvedQuote', 'kyc', 'dossier', 'identificationTypes'));
+        $availableGuarantors = Guarantor::query()
+            ->where('status', 'Verified')
+            ->whereHas('principalCustomer', function ($query) use ($loanApplication) {
+                $query->where('branch_id', $loanApplication->branch_id);
+            })
+            ->whereDoesntHave('guarantees', function ($query) use ($loanApplication) {
+                $query->where('loan_application_id', $loanApplication->id);
+            })
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get(['id', 'first_name', 'middle_name', 'last_name', 'phone']);
+
+        return view('loan-applications.show', compact('loanApplication', 'latestAssessment', 'pendingApproval', 'quote', 'approvedQuote', 'kyc', 'dossier', 'identificationTypes', 'availableGuarantors'));
     }
 
     /**

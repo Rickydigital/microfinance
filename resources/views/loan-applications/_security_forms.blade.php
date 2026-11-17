@@ -1,8 +1,48 @@
 @php($securityCanBeAdded = in_array($loanApplication->status, [\App\LoanApplicationStatus::Draft, \App\LoanApplicationStatus::Submitted, \App\LoanApplicationStatus::UnderAssessment, \App\LoanApplicationStatus::Recommended, \App\LoanApplicationStatus::PendingApproval], true))
 
 @if ($securityCanBeAdded)
-    <div class="mt-4" id="application-security-entry"><h2 class="h4">Application security entry</h2><p class="text-muted">Guarantors and collateral can only be created here, for this specific application. The central registers remain read-only.</p></div>
+    <div class="mb-3">
+        <h3 class="h5">Manage application security</h3>
+        <p class="text-muted">Attach a verified guarantor or register new security only when needed.</p>
+    </div>
     @can('guarantor.manage')
+        <form class="card card-body border-0 shadow-sm mb-3" method="POST"
+              action="{{ route('loan-applications.guarantors.attach-existing', $loanApplication) }}">
+            @csrf
+            <h4 class="h6">Select an existing verified guarantor</h4>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label" for="existing_guarantor_id">Existing guarantor</label>
+                    <select class="form-select enhanced-select" id="existing_guarantor_id" name="guarantor_id" required>
+                        <option value="">Choose a verified guarantor</option>
+                        @foreach ($availableGuarantors as $guarantor)
+                            <option value="{{ $guarantor->id }}" @selected(old('guarantor_id') == $guarantor->id)>
+                                {{ $guarantor->first_name }} {{ $guarantor->middle_name }} {{ $guarantor->last_name }}
+                                — {{ $guarantor->phone }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="existing_guaranteed_amount">Guaranteed amount (TZS)</label>
+                    <input class="form-control" id="existing_guaranteed_amount" name="guaranteed_amount"
+                           type="number" min="0.01" step="0.01"
+                           max="{{ $loanApplication->requested_amount }}" required>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100">Attach guarantor</button>
+                </div>
+                <div class="col-12 form-check ms-2">
+                    <input class="form-check-input" type="checkbox" id="existing_consent" name="consent_received" value="1" required>
+                    <label class="form-check-label" for="existing_consent">Signed consent for this application has been received</label>
+                </div>
+            </div>
+            @if ($availableGuarantors->isEmpty())
+                <p class="small text-muted mt-2 mb-0">No eligible verified guarantors available in this branch.</p>
+            @endif
+        </form>
+        <details class="card border-0 shadow-sm mb-3">
+            <summary class="card-body fw-semibold" style="cursor:pointer">Register a new guarantor instead</summary>
         <form class="card card-body border-0 shadow-sm mb-4" method="POST" action="{{ route('loan-applications.guarantors.store', $loanApplication) }}">
             @csrf
             <h3 class="h5">Add guarantor</h3>
@@ -20,8 +60,11 @@
             </div>
             <button class="btn btn-primary align-self-start mt-3">Add for verification</button>
         </form>
+        </details>
     @endcan
     @can('collateral.manage')
+        <details class="card border-0 shadow-sm mb-3">
+            <summary class="card-body fw-semibold" style="cursor:pointer">Register new collateral</summary>
         <form class="card card-body border-0 shadow-sm mb-4" method="POST" action="{{ route('loan-applications.collaterals.store', $loanApplication) }}">
             @csrf
             <h3 class="h5">Add collateral</h3>
@@ -37,5 +80,6 @@
             </div>
             <button class="btn btn-primary align-self-start mt-3">Add for verification</button>
         </form>
+        </details>
     @endcan
 @endif

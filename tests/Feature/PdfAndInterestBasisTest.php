@@ -41,10 +41,14 @@ test('repayment receipt downloads through the shared a4 pdf renderer', function 
 test('shared pdf layout uses the reference letterhead typography and tables', function (): void {
     $html = view('pdf.report', [
         'report' => 'portfolio',
-        'definition' => ['label' => 'Portfolio', 'group_label' => 'Loan portfolio summary'],
+        'definition' => ['label' => 'Portfolio', 'group_label' => 'Loan portfolio summary', 'dataset' => 'portfolio'],
         'metrics' => ['active_loans' => 5, 'outstanding_principal' => 500000, 'collections' => 20000, 'open_cases' => 0, 'debits' => 500000, 'credits' => 500000],
+        'statusDistribution' => collect(),
+        'records' => collect(),
+        'from' => null,
+        'to' => null,
     ])->render();
-    expect($html)->toContain('Times New Roman', 'institution-header', 'document-footer', 'pdf-watermark', 'Portfolio Report');
+    expect($html)->toContain('Times New Roman', 'official-header', 'document-footer', 'pdf-watermark', 'Portfolio Report', 'Official system-generated document');
     $pdf = Pdf::loadHTML($html)->setPaper('a4')->output();
     expect($pdf)->toStartWith('%PDF-');
     if (getenv('PDF_PREVIEW_PATH')) {

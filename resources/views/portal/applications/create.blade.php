@@ -1,112 +1,19 @@
 @extends('layouts.portal')
 @section('title','Apply for a loan')
 @section('content')
-
-<div class="page-head">
-    <div>
-        <span class="eyebrow">New application</span>
-        <h1>Self-service loan application</h1>
-        <p>Your verified economic profile is used to check affordability. Submission goes to our staff for risk assessment and approval — nothing is disbursed automatically.</p>
-    </div>
+<div class="page-head"><div><span class="eyebrow">New application</span><h1>Choose the right loan</h1><p>Calculate your expected repayment before submitting for assessment.</p></div></div>
+@if(!$profile)<div class="alert alert-danger">No current economic profile is available. Contact your branch before applying.</div>@endif
+<div class="application-calculator-layout">
+<form class="card card-pad" method="POST" action="{{ route('portal.applications.store') }}">@csrf
+    <div class="field"><label for="portal-product">Loan product</label><select class="input" id="portal-product" name="loan_product_version_id" required><option value="">Select product</option>@foreach($versions as $version)<option value="{{ $version->id }}" data-min="{{ $version->minimum_amount }}" data-max="{{ $version->maximum_amount }}" data-min-term="{{ $version->minimum_term }}" data-max-term="{{ $version->maximum_term }}" data-unit="{{ $version->term_unit }}" data-rate="{{ $version->interest_rate }}" data-method="{{ $version->interest_method }}" data-percent-fee="{{ $version->fees->where('collection_point','Disbursement')->where('calculation_method','Percentage')->sum('value') }}" data-fixed-fee="{{ $version->fees->where('collection_point','Disbursement')->where('calculation_method','Fixed')->sum('value') }}">{{ $version->product->name }} · {{ number_format((float)$version->interest_rate*100,1) }}% {{ $version->rate_basis }}</option>@endforeach</select></div>
+    <div class="grid grid-2"><div class="field"><label for="portal-amount">Requested amount</label><input class="input" id="portal-amount" type="number" min="1" step="1000" name="requested_amount" value="{{ old('requested_amount') }}" required><div class="hint" id="portal-amount-help">Select a product to see its limits.</div></div><div class="field"><label for="portal-term">Term</label><input class="input" id="portal-term" type="number" min="1" name="requested_term" value="{{ old('requested_term') }}" required><div class="hint" id="portal-term-help">Select a product to see its limits.</div></div></div>
+    <div class="field"><label for="portal-purpose">What will you use the loan for?</label><textarea class="input" id="portal-purpose" name="purpose" rows="4" minlength="10" required placeholder="Example: kuongeza bidhaa dukani, gharama za dharura, au kununua vifaa.">{{ old('purpose') }}</textarea></div>
+    <button class="btn btn-accent" @disabled(!$profile || $versions->isEmpty())>Submit for assessment <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+</form>
+<aside class="card card-pad portal-calculator"><span class="eyebrow">Loan calculator</span><h2>Your estimate</h2><p>Transparent figures based on the selected product.</p><div class="calculator-hero"><small>Estimated monthly installment</small><strong id="est-installment">—</strong><span id="est-product">Select a product</span></div><div class="calculator-lines"><div><span>Principal</span><b id="est-principal">—</b></div><div><span>Total interest</span><b id="est-interest">—</b></div><div><span>Processing fee</span><b id="est-fee">—</b></div><div><span>Net amount received</span><b id="est-net">—</b></div><div class="calculator-total"><span>Total repayment</span><b id="est-total">—</b></div></div><small class="calculator-note">This is an estimate. Final approval depends on KYC, affordability and credit assessment.</small></aside>
 </div>
-
-@if(!$profile)
-    <div class="alert alert-danger">No current economic profile is available for your account. Contact your branch before applying.</div>
-@endif
-
-<div class="grid" style="grid-template-columns:1.5fr 1fr;align-items:start;">
-    <form class="card card-pad" method="POST" action="{{ route('portal.applications.store') }}">
-        @csrf
-
-        <div class="field">
-            <label for="portal-product">Loan product</label>
-            <select class="input" id="portal-product" name="loan_product_version_id" required>
-                <option value="">Select product</option>
-                @foreach($versions as $version)
-                    <option value="{{ $version->id }}"
-                        data-min="{{ $version->minimum_amount }}" data-max="{{ $version->maximum_amount }}"
-                        data-min-term="{{ $version->minimum_term }}" data-max-term="{{ $version->maximum_term }}"
-                        data-unit="{{ $version->term_unit }}" data-rate="{{ $version->interest_rate }}">
-                        {{ $version->product->name }} · {{ number_format((float)$version->interest_rate*100,2) }}% {{ $version->rate_basis }}
-                    </option>
-                @endforeach
-            </select>
-        </div>
-
-        <div class="grid grid-2">
-            <div class="field">
-                <label for="portal-amount">Requested amount</label>
-                <input class="input" id="portal-amount" type="number" min="0.01" step="0.01" name="requested_amount" value="{{ old('requested_amount') }}" required>
-                <div class="hint" id="portal-amount-help">Select a product to see the allowed range.</div>
-            </div>
-            <div class="field">
-                <label for="portal-term">Requested term</label>
-                <input class="input" id="portal-term" type="number" min="1" name="requested_term" value="{{ old('requested_term') }}" required>
-                <div class="hint" id="portal-term-help">Select a product to see the allowed range.</div>
-            </div>
-        </div>
-
-        <div class="field">
-            <label for="portal-purpose">Loan purpose</label>
-            <textarea class="input" id="portal-purpose" name="purpose" rows="4" minlength="10" required placeholder="Tell us what the loan is for — e.g. restocking inventory, buying equipment, expanding a stall.">{{ old('purpose') }}</textarea>
-        </div>
-
-        <button class="btn btn-accent" style="margin-top:6px;" @disabled(!$profile || $versions->isEmpty())>
-            Submit for assessment
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </button>
-    </form>
-
-    <div class="card card-pad" style="position:sticky;top:24px;">
-        <span class="eyebrow">Indicative estimate</span>
-        <p style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 16px;">A rough guide only — your actual quote, with fees and exact schedule, is confirmed after submission.</p>
-        <div style="display:flex;flex-direction:column;gap:12px;">
-            <div>
-                <span class="eyebrow">Product</span>
-                <div id="est-product" style="font-weight:600;font-size:14px;">—</div>
-            </div>
-            <div>
-                <span class="eyebrow">Estimated total interest</span>
-                <div id="est-interest" class="money" style="font-size:18px;color:var(--primary);">—</div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    var p = document.getElementById('portal-product'),
-        a = document.getElementById('portal-amount'),
-        t = document.getElementById('portal-term'),
-        amountHelp = document.getElementById('portal-amount-help'),
-        termHelp = document.getElementById('portal-term-help'),
-        estProduct = document.getElementById('est-product'),
-        estInterest = document.getElementById('est-interest');
-
-    function updateEstimate() {
-        var o = p.selectedOptions[0];
-        if (!o || !o.value) { estProduct.textContent = '—'; estInterest.textContent = '—'; return; }
-        estProduct.textContent = o.textContent.trim();
-        var amount = parseFloat(a.value), term = parseFloat(t.value), rate = parseFloat(o.dataset.rate);
-        if (amount > 0 && term > 0 && rate >= 0) {
-            var interest = amount * rate * (term / 12);
-            estInterest.textContent = '{{ config('microfinance.currency') }} ' + interest.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-        } else {
-            estInterest.textContent = '—';
-        }
-    }
-
-    p.addEventListener('change', function () {
-        var o = p.selectedOptions[0];
-        a.min = o.dataset.min || ''; a.max = o.dataset.max || '';
-        t.min = o.dataset.minTerm || ''; t.max = o.dataset.maxTerm || '';
-        amountHelp.textContent = 'Allowed: ' + (o.dataset.min || 0) + ' to ' + (o.dataset.max || 0);
-        termHelp.textContent = 'Allowed: ' + (o.dataset.minTerm || 0) + ' to ' + (o.dataset.maxTerm || 0) + ' ' + (o.dataset.unit || 'units');
-        updateEstimate();
-    });
-    a.addEventListener('input', updateEstimate);
-    t.addEventListener('input', updateEstimate);
-});
+document.addEventListener('DOMContentLoaded',function(){var product=document.getElementById('portal-product'),amount=document.getElementById('portal-amount'),term=document.getElementById('portal-term'),ids=['principal','interest','fee','net','total','installment'];function money(value){return '{{ config('microfinance.currency') }} '+value.toLocaleString(undefined,{maximumFractionDigits:2})}function reset(){ids.forEach(function(id){document.getElementById('est-'+id).textContent='—'})}function calculate(){var option=product.selectedOptions[0],principal=parseFloat(amount.value),periods=parseInt(term.value);if(!option||!option.value||!(principal>0)||!(periods>0)){reset();return}var rate=parseFloat(option.dataset.rate||0),interest=option.dataset.method==='Flat'?principal*rate*periods:principal*rate*(periods+1)/2,fee=principal*parseFloat(option.dataset.percentFee||0)+parseFloat(option.dataset.fixedFee||0),total=principal+interest;document.getElementById('est-product').textContent=option.textContent.trim();document.getElementById('est-principal').textContent=money(principal);document.getElementById('est-interest').textContent=money(interest);document.getElementById('est-fee').textContent=money(fee);document.getElementById('est-net').textContent=money(Math.max(0,principal-fee));document.getElementById('est-total').textContent=money(total);document.getElementById('est-installment').textContent=money(total/periods)}product.addEventListener('change',function(){var option=product.selectedOptions[0];amount.min=option.dataset.min||1;amount.max=option.dataset.max||'';term.min=option.dataset.minTerm||1;term.max=option.dataset.maxTerm||'';document.getElementById('portal-amount-help').textContent='Allowed: '+money(parseFloat(option.dataset.min||0))+' – '+money(parseFloat(option.dataset.max||0));document.getElementById('portal-term-help').textContent='Allowed: '+(option.dataset.minTerm||0)+'–'+(option.dataset.maxTerm||0)+' '+(option.dataset.unit||'units');calculate()});amount.addEventListener('input',calculate);term.addEventListener('input',calculate);calculate()});
 </script>
-
+<style>.application-calculator-layout{display:grid;grid-template-columns:1.35fr .8fr;gap:20px;align-items:start}.portal-calculator{position:sticky;top:24px}.portal-calculator h2{font-size:23px;margin:5px 0}.portal-calculator>p{color:var(--ink-faint);font-size:13px}.calculator-hero{background:linear-gradient(135deg,var(--primary),#244d45);color:#fff;border-radius:17px;padding:21px;margin:17px 0}.calculator-hero small,.calculator-hero strong,.calculator-hero span{display:block}.calculator-hero strong{font-size:27px;margin:5px 0}.calculator-hero span{opacity:.8;font-size:12px}.calculator-lines>div{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.calculator-lines span{color:var(--ink-soft)}.calculator-total{font-size:15px!important;border:0!important}.calculator-total b{color:var(--primary)}.calculator-note{display:block;color:var(--ink-faint);line-height:1.5;margin-top:13px}@media(max-width:850px){.application-calculator-layout{grid-template-columns:1fr}.portal-calculator{position:static}}</style>
 @endsection

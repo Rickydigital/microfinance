@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             DocumentTypeSeeder::class,
             AdministrativeHierarchySeeder::class,
             LoanProductSeeder::class,
+            MyCashHistoricalLoansSeeder::class,
             ApprovalRuleSeeder::class,
             ChartOfAccountSeeder::class,
             AccountingPeriodSeeder::class,

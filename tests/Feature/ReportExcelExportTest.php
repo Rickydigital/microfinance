@@ -5,7 +5,12 @@ use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Models\Loan;
+use App\Models\Repayment;
 use App\Models\User;
+use Database\Seeders\BranchSeeder;
+use Database\Seeders\InstitutionSeeder;
+use Database\Seeders\MyCashHistoricalLoansSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -34,6 +39,7 @@ test('report catalogue renders formal report groups', function (): void {
         ->assertOk()
         ->assertSee('Regulatory Reports')
         ->assertSee('BoT Periodic Return')
+        ->assertSee('.report-hero h1,.report-hero p', false)
         ->assertSee('Credit Reference / CRB')
         ->assertSee('Audit &amp; Compliance', false);
 });
@@ -68,3 +74,48 @@ test('every supported report type builds an excel workbook', function (string $r
     ['collections', 'Repayments'],
     ['audit', 'Audit Log'],
 ]);
+
+test('collection PDF opens inline with full repayment records', function (): void {
+    $this->seed([InstitutionSeeder::class, BranchSeeder::class, RolePermissionSeeder::class, MyCashHistoricalLoansSeeder::class]);
+    $branch = Branch::query()->where('code', config('microfinance.defaults.branch.code'))->firstOrFail();
+    $auditor = User::factory()->create(['branch_id' => $branch->id]);
+    $auditor->assignRole('Internal Auditor');
+
+    $response = $this->actingAs($auditor)->get(route('reports.pdf', ['report' => 'repayments']));
+
+    $response->assertOk();
+    expect($response->headers->get('content-type'))->toContain('application/pdf')
+        ->and($response->headers->get('content-disposition'))->toContain('inline');
+});
+
+test('report analytics use business dates and show disbursement and repayment trends', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+    $branch = Branch::factory()->create();
+    $auditor = User::factory()->create(['branch_id' => $branch->id]);
+    $auditor->assignRole('Internal Auditor');
+    $loan = Loan::factory()->create([
+        'branch_id' => $branch->id,
+        'principal_amount' => 1000000,
+        'outstanding_principal' => 750000,
+        'disbursed_at' => '2020-01-15',
+    ]);
+    Repayment::factory()->create([
+        'loan_id' => $loan->id,
+        'receipt_number' => 'RCT-TREND-001',
+        'amount' => 125000,
+        'status' => 'Posted',
+        'payment_method' => 'Bank Transfer',
+        'received_by' => $auditor->id,
+        'paid_at' => '2020-03-10',
+        'created_at' => now(),
+    ]);
+
+    $this->actingAs($auditor)->get(route('reports.index', ['report' => 'portfolio-summary']))
+        ->assertOk()
+        ->assertSee('TZS 1,000,000.00')
+        ->assertSee('TZS 125,000.00')
+        ->assertSee('Jan 20')
+        ->assertSee('Mar 20')
+        ->assertSee('Portfolio aging exposure')
+        ->assertSee('Repayment method mix');
+});

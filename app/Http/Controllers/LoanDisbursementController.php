@@ -27,10 +27,21 @@ class LoanDisbursementController extends Controller implements HasMiddleware
 
     public function index(Request $request): View
     {
-        $applications = LoanApplication::query()->with(['customer', 'productVersion.product'])->where('status', 'Approved')->where('branch_id', $request->user()->branch_id)->get();
-        $disbursements = LoanDisbursement::query()->with(['application.customer', 'creator', 'authorizer'])->where('branch_id', $request->user()->branch_id)->latest()->paginate(20);
+        $applications = LoanApplication::query()->with(['customer', 'productVersion.product'])->where('status', 'Approved')->whereDoesntHave('loan')->whereDoesntHave('disbursement')->where('branch_id', $request->user()->branch_id)->get();
+        $period = in_array($request->string('period')->toString(), ['all', 'month', 'today'], true) ? $request->string('period')->toString() : 'all';
+        $disbursementScope = LoanDisbursement::query()
+            ->where('branch_id', $request->user()->branch_id)
+            ->when($period === 'month', fn ($query) => $query->whereBetween('disbursed_at', [today()->startOfMonth(), today()->endOfMonth()]))
+            ->when($period === 'today', fn ($query) => $query->whereDate('disbursed_at', today()));
+        $disbursements = (clone $disbursementScope)->with(['application.customer', 'creator', 'authorizer'])->latest()->paginate(20)->withQueryString();
+        $metrics = [
+            'ready' => $applications->count(),
+            'pending' => LoanDisbursement::query()->where('branch_id', $request->user()->branch_id)->where('status', 'Pending Authorization')->count(),
+            'gross' => (clone $disbursementScope)->where('status', 'Disbursed')->sum('gross_amount'),
+            'net' => (clone $disbursementScope)->where('status', 'Disbursed')->sum('net_amount'),
+        ];
 
-        return view('loan-disbursements.index', compact('applications', 'disbursements'));
+        return view('loan-disbursements.index', compact('applications', 'disbursements', 'metrics', 'period'));
     }
 
     public function store(Request $request, LoanDisbursementService $service, CustomerCommunicationService $communication): RedirectResponse

@@ -17,7 +17,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerKycController extends Controller implements HasMiddleware
@@ -25,7 +27,7 @@ class CustomerKycController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('can:customer.verify', only: ['verify', 'verifyAddress', 'verifyIdentification', 'verifyDocument']),
+            new Middleware('can:customer.verify', only: ['verify', 'reject', 'verifyAddress', 'verifyIdentification', 'verifyDocument']),
             new Middleware('can:customer.address.manage', only: ['storeAddress']),
             new Middleware('can:customer.economic-profile.manage', only: ['storeEconomicProfile']),
             new Middleware('can:customer.relationship.manage', only: ['storeRelationship']),
@@ -47,14 +49,35 @@ class CustomerKycController extends Controller implements HasMiddleware
 
             return back()->withErrors(['kyc' => 'KYC is incomplete. Missing or unverified: '.$missing.'.']);
         }
-        $customer->update([
-            'kyc_risk_rating' => $request->string('kyc_risk_rating')->toString(),
-            'status' => CustomerStatus::Active,
-            'verified_at' => now(),
-        ]);
+        DB::transaction(function () use ($customer, $request): void {
+            $customer->update([
+                'kyc_risk_rating' => $request->string('kyc_risk_rating')->toString(),
+                'status' => CustomerStatus::Active,
+                'verified_at' => now(),
+            ]);
+            $customer->kycDecisions()->create(['decision' => 'approved', 'risk_rating' => $request->input('kyc_risk_rating'), 'decided_by' => $request->user()->id]);
+        });
         $communication->send($customer, 'Customer verification completed', "Your customer profile {$customer->customer_number} is now active.", 'kyc_verified');
 
         return back()->with('success', 'Customer KYC verified successfully.');
+    }
+
+    public function reject(Request $request, Customer $customer): RedirectResponse
+    {
+        $this->ensureBranchScope($request, $customer);
+        $validated = $request->validate(['reason' => ['required', 'string', 'min:10', 'max:2000']]);
+        if ($customer->verified_at !== null) {
+            throw ValidationException::withMessages(['kyc' => 'Already-approved KYC cannot be rejected using this pending-review action.']);
+        }
+        DB::transaction(function () use ($customer, $request, $validated): void {
+            $customer->update(['status' => CustomerStatus::PendingVerification]);
+            $customer->kycDecisions()->create([
+                'decision' => 'rejected', 'reason' => $validated['reason'],
+                'decided_by' => $request->user()->id,
+            ]);
+        });
+
+        return back()->with('success', 'KYC rejected. The borrower can provide corrected evidence for a new review.');
     }
 
     public function storeAddress(Request $request, Customer $customer): RedirectResponse

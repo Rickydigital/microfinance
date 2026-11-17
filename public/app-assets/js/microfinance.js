@@ -19,16 +19,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    document.querySelectorAll('form[action$="/guarantors"], form[action$="/collaterals"]').forEach(function (securityForm) {
-        if (!securityForm.action.includes('/loan-applications/')) {
-            var notice = document.createElement('div');
-            notice.className = 'alert alert-info mt-3 mb-0';
-            notice.textContent = 'Create and verify this security from the Security section of a specific loan application.';
-            securityForm.replaceWith(notice);
-        }
-    });
-
     initializeSidebarToggle();
+    initializeFormSubmissionGuard();
 
     var userMenuButton = document.querySelector('[data-user-menu]');
     var userMenuDropdown = document.querySelector('[data-user-menu-dropdown]');
@@ -55,21 +47,48 @@ document.addEventListener('DOMContentLoaded', function () {
     initializeLocationSelectors();
 });
 
+function initializeFormSubmissionGuard() {
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+
+        if (!(form instanceof HTMLFormElement) || form.dataset.allowMultipleSubmissions === 'true') {
+            return;
+        }
+
+        if (form.dataset.submitting === 'true') {
+            event.preventDefault();
+            return;
+        }
+
+        form.dataset.submitting = 'true';
+        form.setAttribute('aria-busy', 'true');
+
+        form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (control) {
+            control.disabled = true;
+
+            if (control.tagName === 'BUTTON') {
+                control.dataset.originalContent = control.innerHTML;
+                control.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Submitting…';
+            } else {
+                control.dataset.originalValue = control.value;
+                control.value = 'Submitting…';
+            }
+        });
+    });
+}
+
 /**
  * Sidebar open/close + collapse.
  *
  * - On screens < 768px the sidebar behaves as an off-canvas panel:
  *   the toggle button slides it in/out, a dark backdrop appears behind it,
  *   and clicking the backdrop or pressing Escape closes it.
- * - On screens >= 768px the same toggle button instead collapses the
- *   sidebar down to an icon-only rail (rather than doing nothing, which
- *   was the previous behaviour). The collapsed state is remembered
- *   across page loads via localStorage.
+ * - On screens >= 768px the sidebar is always an icon rail and CSS expands
+ *   it while hovered or keyboard-focused.
  */
 function initializeSidebarToggle() {
     var toggle = document.querySelector('[data-sidebar-toggle]');
     var backdrop = document.querySelector('[data-sidebar-backdrop]');
-    var STORAGE_KEY = 'microfinance:sidebar-collapsed';
     var MOBILE_QUERY = '(max-width: 767px)';
 
     if (!toggle) {
@@ -102,32 +121,14 @@ function initializeSidebarToggle() {
         }
     }
 
-    function toggleDesktopCollapse() {
-        var collapsed = document.body.classList.toggle('sidebar-collapsed');
-        setExpanded(!collapsed);
-
-        try {
-            window.localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
-        } catch (error) {
-            // localStorage may be unavailable (private browsing, etc). Non-fatal.
-        }
-    }
-
-    // Restore the desktop collapsed preference on load.
-    try {
-        if (!isMobile() && window.localStorage.getItem(STORAGE_KEY) === '1') {
-            document.body.classList.add('sidebar-collapsed');
-            setExpanded(false);
-        }
-    } catch (error) {
-        // Ignore storage errors.
+    if (!isMobile()) {
+        document.body.classList.add('sidebar-collapsed');
+        setExpanded(false);
     }
 
     toggle.addEventListener('click', function () {
         if (isMobile()) {
             toggleMobile();
-        } else {
-            toggleDesktopCollapse();
         }
     });
 
@@ -145,9 +146,11 @@ function initializeSidebarToggle() {
     // active, clear it so we don't end up stuck half-open / collapsed.
     window.addEventListener('resize', debounce(function () {
         if (isMobile()) {
-            document.body.classList.remove('sidebar-collapsed');
+            closeMobile();
         } else {
             document.body.classList.remove('sidebar-open');
+            document.body.classList.add('sidebar-collapsed');
+            setExpanded(false);
         }
     }, 150));
 }
@@ -214,7 +217,7 @@ function initializeSelects(container) {
             select.select2('destroy');
         }
 
-        var modal = select.closest('.modal');
+        var modal = select.closest('.modal, .register-modal, .cash-overlay, .application-overlay');
         var dropdownParent = modal.length ? modal : window.jQuery(document.body);
 
         select.select2({

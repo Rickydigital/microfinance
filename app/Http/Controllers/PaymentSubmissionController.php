@@ -85,9 +85,32 @@ class PaymentSubmissionController extends Controller
 
     public function index(Request $request): View
     {
+        $term = trim($request->string('search')->toString());
+        $status = $request->input('status');
+        $method = $request->input('method');
+
         $submissions = PaymentSubmission::query()->with(['customer', 'application', 'loan', 'repayment'])
             ->whereHas('application', fn ($query) => $query->when($request->user()->branch_id, fn ($query, $branch) => $query->where('branch_id', $branch)))
-            ->orderByRaw("CASE WHEN status = 'Pending' THEN 0 ELSE 1 END")->latest()->paginate(20);
+            ->when($term !== '', function ($query) use ($term): void {
+                foreach (preg_split('/\s+/', $term) as $word) {
+                    $like = '%'.addcslashes($word, '%_\\').'%';
+                    $query->where(function ($sub) use ($like): void {
+                        $sub->where('external_reference', 'like', $like)
+                            ->orWhereHas('customer', fn ($c) => $c->where(function ($c) use ($like): void {
+                                $c->where('first_name', 'like', $like)
+                                    ->orWhere('last_name', 'like', $like)
+                                    ->orWhere('phone', 'like', $like)
+                                    ->orWhere('customer_number', 'like', $like);
+                            }))
+                            ->orWhereHas('loan', fn ($l) => $l->where('loan_number', 'like', $like))
+                            ->orWhereHas('application', fn ($a) => $a->where('application_number', 'like', $like));
+                    });
+                }
+            })
+            ->when(in_array($status, ['Pending', 'Approved', 'Rejected'], true), fn ($q) => $q->where('status', $status))
+            ->when(in_array($method, ['Cash', 'Bank', 'Mobile Money'], true), fn ($q) => $q->where('payment_method', $method))
+            ->orderByRaw("CASE WHEN status = 'Pending' THEN 0 ELSE 1 END")->latest()
+            ->paginate(20)->withQueryString();
 
         return view('repayments.submissions', compact('submissions'));
     }

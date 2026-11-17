@@ -4,6 +4,7 @@
     @include('partials.alerts')
     <h1 class="h3">Import historical loans</h1>
     <p>Upload one row per existing loan. Customers and product versions must exist first.</p>
+    <div class="alert alert-info"><strong>How to use the sample:</strong> download the template, replace the example row with your loan data, and choose the loan status from the Excel dropdown. Do not rename or reorder the columns.</div>
     <div class="card card-body mb-4">
         <p><a href="{{ route('loan-imports.template') }}">Download Excel template</a></p>
         <ul>

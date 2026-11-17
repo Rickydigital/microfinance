@@ -264,11 +264,11 @@ test('spreadsheet preview saves nothing until confirmation and screens render', 
 });
 
 test('product version form creates optional deducted fees and assurance terms', function (): void {
-    $data = ['minimum_amount' => 10000, 'maximum_amount' => 100000, 'minimum_term' => 1, 'maximum_term' => 12, 'term_unit' => 'Months', 'interest_method' => 'Flat', 'interest_rate_percent' => 10, 'rate_basis' => 'Whole Term', 'repayment_frequency' => 'Monthly', 'principal_grace_period' => 0, 'interest_grace_period' => 0, 'required_guarantors' => 0, 'maximum_installment_ratio_percent' => 50, 'effective_from' => today()->addDay()->toDateString(), 'assurance_percent' => 3, 'processing_fee' => 10000];
+    $data = ['minimum_amount' => 10000, 'maximum_amount' => 100000, 'minimum_term' => 1, 'maximum_term' => 12, 'term_unit' => 'Months', 'interest_method' => 'Flat', 'interest_rate_percent' => 10, 'rate_basis' => 'Whole Term', 'repayment_frequency' => 'Monthly', 'principal_grace_period' => 0, 'interest_grace_period' => 0, 'required_guarantors' => 0, 'maximum_installment_ratio_percent' => 50, 'effective_from' => today()->addDay()->toDateString(), 'assurance_percent' => 3, 'processing_fee' => 15000];
     $this->actingAs($this->staff)->post(route('loan-products.versions.store', $this->version->product), $data)->assertSessionHasNoErrors();
     $version = $this->version->product->versions()->latest('version')->first();
-    expect((float) $version->assurance_percent)->toBe(3.0)->and($version->fees()->first()->collection_point)->toBe('Disbursement');
-    $this->get(route('loan-products.show', $version->product))->assertOk()->assertSee('Processing fee (fixed amount)');
+    expect((float) $version->assurance_percent)->toBe(3.0)->and($version->fees()->first()->collection_point)->toBe('Installment');
+    $this->get(route('loan-products.show', $version->product))->assertOk()->assertSee('Processing fee for the whole loan');
 });
 
 test('a product can disable assurance and processing fees and never disburse negative cash', function (): void {
@@ -376,8 +376,12 @@ test('customers cannot submit separate assurance payments', function (): void {
     expect(PaymentSubmission::count())->toBe(0);
 });
 
-test('standard product seeding does not add a hardcoded processing fee', function (): void {
+test('standard product seeding adds the fixed distributed processing fee', function (): void {
     $this->seed(ProfessionalLoanProductSeeder::class);
     $product = LoanProduct::where('code', 'STANDARD-MICRO')->firstOrFail();
-    expect($product->versions()->firstOrFail()->fees()->count())->toBe(0);
+    $fee = $product->versions()->firstOrFail()->fees()->where('name', 'Processing fee')->firstOrFail();
+    expect((float) $fee->value)->toBe(15000.0)
+        ->and($fee->calculation_method)->toBe('Fixed')
+        ->and($fee->collection_point)->toBe('Installment')
+        ->and($fee->is_financed)->toBeTrue();
 });

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\LoanApplicationStatus;
 use App\Models\Collateral;
+use App\Models\Customer;
 use App\Models\LoanApplication;
 use App\Models\NumberSequence;
 use Illuminate\Http\RedirectResponse;
@@ -16,16 +17,58 @@ class CollateralController extends Controller implements HasMiddleware
 {
     public static function middleware(): array
     {
-        return [new Middleware('can:collateral.view', only: ['index']), new Middleware('can:collateral.manage', only: ['store', 'attach']), new Middleware('can:collateral.verify', only: ['verify'])];
+        return [new Middleware('can:collateral.view', only: ['index']), new Middleware('can:collateral.manage', only: ['store', 'storeRegister', 'updateRegister', 'setStatus', 'attach']), new Middleware('can:collateral.verify', only: ['verify'])];
     }
 
     public function index(Request $request): View
     {
-        $collaterals = Collateral::query()->with('customer')->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId))
+        $baseQuery = Collateral::query()->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId))
             ->when($request->string('search')->toString(), fn ($query, string $search) => $query->where(fn ($query) => $query->where('collateral_number', 'like', "%{$search}%")->orWhere('description', 'like', "%{$search}%")->orWhere('ownership_reference', 'like', "%{$search}%")))
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->input('status')));
+
+        $metrics = [
+            'total' => (clone $baseQuery)->count(),
+            'verified' => (clone $baseQuery)->where('status', 'Verified')->count(),
+            'pending' => (clone $baseQuery)->whereNotIn('status', ['Verified', 'Inactive'])->count(),
+            'active' => (clone $baseQuery)->where('status', '!=', 'Inactive')->count(),
+            'market_value' => (clone $baseQuery)->sum('market_value'),
+        ];
+        $collaterals = (clone $baseQuery)->with('customer')
             ->latest()->paginate(20)->withQueryString();
 
-        return view('collaterals.index', compact('collaterals'));
+        $customers = Customer::query()->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId))->orderBy('first_name')->get(['id', 'customer_number', 'first_name', 'last_name', 'branch_id']);
+
+        return view('collaterals.index', compact('collaterals', 'metrics', 'customers'));
+    }
+
+    public function storeRegister(Request $request): RedirectResponse
+    {
+        $validated = $request->validate(['customer_id' => ['required', 'exists:customers,id'], 'type' => ['required', 'string', 'max:100'], 'description' => ['required', 'string', 'max:500'], 'ownership_reference' => ['nullable', 'string', 'max:255'], 'market_value' => ['required', 'numeric', 'gt:0'], 'forced_sale_value' => ['required', 'numeric', 'gt:0', 'lte:market_value'], 'valuer' => ['nullable', 'string', 'max:255'], 'valuation_date' => ['nullable', 'date', 'before_or_equal:today']]);
+        $customer = Customer::query()->findOrFail($validated['customer_id']);
+        abort_if($request->user()->branch_id && $customer->branch_id !== $request->user()->branch_id, 403);
+        Collateral::query()->create($validated + ['branch_id' => $customer->branch_id, 'collateral_number' => NumberSequence::issue('collateral'), 'status' => 'Proposed']);
+
+        return back()->with('success', 'Collateral added to the register.');
+    }
+
+    public function updateRegister(Request $request, Collateral $collateral): RedirectResponse
+    {
+        abort_if($request->user()->branch_id && $collateral->branch_id !== $request->user()->branch_id, 403);
+        $validated = $request->validate(['customer_id' => ['required', 'exists:customers,id'], 'type' => ['required', 'string', 'max:100'], 'description' => ['required', 'string', 'max:500'], 'ownership_reference' => ['nullable', 'string', 'max:255'], 'market_value' => ['required', 'numeric', 'gt:0'], 'forced_sale_value' => ['required', 'numeric', 'gt:0', 'lte:market_value'], 'valuer' => ['nullable', 'string', 'max:255'], 'valuation_date' => ['nullable', 'date', 'before_or_equal:today']]);
+        $customer = Customer::query()->findOrFail($validated['customer_id']);
+        abort_if($request->user()->branch_id && $customer->branch_id !== $request->user()->branch_id, 403);
+        $collateral->update($validated + ['branch_id' => $customer->branch_id]);
+
+        return back()->with('success', 'Collateral updated successfully.');
+    }
+
+    public function setStatus(Request $request, Collateral $collateral): RedirectResponse
+    {
+        abort_if($request->user()->branch_id && $collateral->branch_id !== $request->user()->branch_id, 403);
+        $validated = $request->validate(['active' => ['required', 'boolean']]);
+        $collateral->update(['status' => $validated['active'] ? 'Proposed' : 'Inactive', 'verified_by' => null, 'verified_at' => null]);
+
+        return back()->with('success', $validated['active'] ? 'Collateral activated and returned for verification.' : 'Collateral deactivated.');
     }
 
     public function store(Request $request, LoanApplication $loanApplication): RedirectResponse
@@ -51,6 +94,7 @@ class CollateralController extends Controller implements HasMiddleware
     public function verify(Request $request, Collateral $collateral): RedirectResponse
     {
         abort_if($request->user()->branch_id !== null && $collateral->branch_id !== $request->user()->branch_id, 403);
+        abort_if($collateral->status === 'Inactive', 422, 'Activate this collateral before verification.');
         $collateral->update(['status' => 'Verified', 'verified_by' => $request->user()->id, 'verified_at' => now()]);
         $collateral->pledges()->where('status', 'Pending Verification')->update(['status' => 'Pledged']);
 

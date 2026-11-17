@@ -30,12 +30,42 @@ class RepaymentController extends Controller implements HasMiddleware
 
     public function index(Request $request): View
     {
-        $repayments = Repayment::query()->with(['loan.customer', 'receiver'])
+        $repaymentScope = Repayment::query()->whereHas('loan', fn ($query) => $query->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId)));
+        $repayments = (clone $repaymentScope)->with(['loan.customer', 'receiver'])
             ->whereHas('loan', fn ($query) => $query->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId)))
-            ->when($request->string('search')->toString(), fn ($query, string $search) => $query->where(fn ($query) => $query->where('receipt_number', 'like', "%{$search}%")->orWhere('external_reference', 'like', "%{$search}%")->orWhereHas('loan', fn ($loan) => $loan->where('loan_number', 'like', "%{$search}%")->orWhereHas('customer', fn ($customer) => $customer->where('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")))))
+            ->when(trim($request->string('search')->toString()) !== '', function ($query) use ($request): void {
+                foreach (preg_split('/\s+/', trim($request->string('search')->toString())) as $word) {
+                    $like = '%'.addcslashes($word, '%_\\').'%';
+                    $query->where(function ($sub) use ($like): void {
+                        $sub->where('receipt_number', 'like', $like)
+                            ->orWhere('external_reference', 'like', $like)
+                            ->orWhereHas('loan', fn ($loan) => $loan->where(function ($l) use ($like): void {
+                                $l->where('loan_number', 'like', $like)
+                                    ->orWhereHas('customer', fn ($customer) => $customer->where(function ($c) use ($like): void {
+                                        $c->where('first_name', 'like', $like)
+                                            ->orWhere('last_name', 'like', $like)
+                                            ->orWhere('phone', 'like', $like);
+                                    }));
+                            }));
+                    });
+                }
+            })
             ->latest('paid_at')->paginate(20)->withQueryString();
 
-        return view('repayments.index', compact('repayments'));
+        $loans = Loan::query()->with(['customer', 'installments'])
+            ->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId))
+            ->whereIn('status', ['Active', 'In Arrears', 'Restructured'])
+            ->whereHas('installments', fn ($query) => $query->whereRaw('(principal_due + interest_due + fees_due + penalties_due) > (principal_paid + interest_paid + fees_paid + penalties_paid)'))
+            ->orderBy('loan_number')->get();
+        $metrics = [
+            'today' => (clone $repaymentScope)->whereDate('paid_at', today())->where('status', 'Posted')->sum('amount'),
+            'month' => (clone $repaymentScope)->whereBetween('paid_at', [today()->startOfMonth(), today()->endOfMonth()])->where('status', 'Posted')->sum('amount'),
+            'total' => (clone $repaymentScope)->where('status', 'Posted')->sum('amount'),
+            'count' => (clone $repaymentScope)->where('status', 'Posted')->count(),
+            'unpaid_loans' => $loans->count(),
+        ];
+
+        return view('repayments.index', compact('repayments', 'loans', 'metrics'));
     }
 
     public function create(Request $request): View

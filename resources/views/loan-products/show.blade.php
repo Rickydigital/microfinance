@@ -1,186 +1,52 @@
 @extends('layouts.app')
-
-@section('title', $loanProduct->name)
-
+@section('title', $loanProduct->name.' versions')
 @section('content')
+@php($latestVersion = $loanProduct->versions->sortByDesc('version')->first())
+<div id="versions-top" class="version-page">
     @include('partials.alerts')
+    <header class="version-hero">
+        <a class="version-back" href="{{ route('loan-products.index') }}"><i class="mdi mdi-arrow-left"></i></a>
+        <div class="version-product-icon"><i class="mdi mdi-cube-outline"></i></div>
+        <div><span>Product configuration</span><h1>{{ $loanProduct->name }}</h1><p>{{ $loanProduct->code }} · {{ $loanProduct->description ?: 'No description provided.' }}</p></div>
+        <span class="version-state {{ $loanProduct->is_active ? 'active' : '' }}"><i></i>{{ $loanProduct->is_active ? 'Active' : 'Inactive' }}</span>
+        @can('loan-product.version.create')<a class="product-primary" href="#create-version"><i class="mdi mdi-plus"></i> New version</a>@endcan
+    </header>
 
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-        <div>
-            <div class="d-flex align-items-center gap-2">
-                <h1 class="h3 mb-0">{{ $loanProduct->name }}</h1>
-                <span class="badge {{ $loanProduct->is_active ? 'bg-success' : 'bg-secondary' }}">
-                    {{ $loanProduct->is_active ? 'Active' : 'Inactive' }}
-                </span>
-            </div>
-            <p class="text-muted mt-2 mb-0">{{ $loanProduct->code }} · {{ $loanProduct->description ?: 'No description provided.' }}</p>
-        </div>
-        <div class="d-flex gap-2">
-            @can('loan-product.update')
-                <a class="btn btn-outline-primary" href="{{ route('loan-products.edit', $loanProduct) }}">Edit product</a>
-            @endcan
-            <a class="btn btn-outline-secondary" href="{{ route('loan-products.index') }}">Back</a>
-        </div>
+    @if($latestVersion)
+    <section class="current-version">
+        <div class="current-version-title"><span>Current configuration</span><h2>Version {{ $latestVersion->version }}</h2><p>Effective {{ $latestVersion->effective_from->format('d M Y') }}{{ $latestVersion->effective_to ? ' to '.$latestVersion->effective_to->format('d M Y') : ' · Open ended' }}</p></div>
+        <div><small>Amount range</small><strong>TZS {{ number_format((float) $latestVersion->minimum_amount) }}</strong><span>to TZS {{ number_format((float) $latestVersion->maximum_amount) }}</span></div>
+        <div><small>Duration</small><strong>{{ $latestVersion->minimum_term }}–{{ $latestVersion->maximum_term }}</strong><span>{{ $latestVersion->term_unit }}</span></div>
+        <div><small>Interest</small><strong>{{ rtrim(rtrim(number_format((float) $latestVersion->interest_rate * 100, 2), '0'), '.') }}%</strong><span>{{ $latestVersion->interest_method }} · {{ $latestVersion->rate_basis }}</span></div>
+        <div><small>Repayment</small><strong>{{ $latestVersion->repayment_frequency }}</strong><span>{{ $latestVersion->required_guarantors }} guarantor(s) · {{ $latestVersion->requires_collateral ? 'Collateral required' : 'No collateral' }}</span></div>
+    </section>
+    @else
+    <div class="version-warning"><i class="mdi mdi-alert-outline"></i><div><strong>This product is not ready for lending.</strong><span>Create its first financial version to make it available in loan applications.</span></div></div>
+    @endif
+
+    <div class="version-section-heading"><div><span>Immutable audit history</span><h2>Product versions</h2><p>Existing applications retain the exact terms they were created with.</p></div><span>{{ $loanProduct->versions->count() }} {{ Str::plural('version', $loanProduct->versions->count()) }}</span></div>
+    <div class="version-list">
+        @forelse($loanProduct->versions->sortByDesc('version') as $version)
+            @php($isEffective = $loanProduct->is_active && $version->effective_from->lte(today()) && ($version->effective_to === null || $version->effective_to->gte(today())))
+            <article class="version-card">
+                <div class="version-number"><strong>V{{ $version->version }}</strong><span>{{ $version->effective_from->format('d M Y') }}</span></div>
+                <div class="version-summary"><h3>Version {{ $version->version }} <span class="version-chip {{ $isEffective ? 'active' : '' }}">{{ $isEffective ? 'Currently offered' : ($version->effective_to ? 'Historical' : 'Scheduled') }}</span></h3><p>{{ $version->effective_from->format('d M Y') }} — {{ $version->effective_to?->format('d M Y') ?? 'Open ended' }}</p></div>
+                <div><small>Limits</small><strong>TZS {{ number_format((float) $version->minimum_amount) }}–{{ number_format((float) $version->maximum_amount) }}</strong></div>
+                <div><small>Interest</small><strong>{{ rtrim(rtrim(number_format((float) $version->interest_rate * 100, 2), '0'), '.') }}% {{ $version->rate_basis }}</strong></div>
+                <div><small>Fees / penalties</small><strong>{{ $version->fees->count() }} / {{ $version->penaltyRules->count() }}</strong></div>
+                <div class="version-actions"><a href="#view-version-{{ $version->id }}"><i class="mdi mdi-eye-outline"></i> Details</a>@can('loan-product.fee.manage')<a href="#fee-version-{{ $version->id }}"><i class="mdi mdi-cash-plus"></i> Fee</a><a href="#penalty-version-{{ $version->id }}"><i class="mdi mdi-alert-plus-outline"></i> Penalty</a>@endcan @can('loan-product.accounting.manage')<a href="#accounts-version-{{ $version->id }}"><i class="mdi mdi-book-cog-outline"></i> Accounts</a>@endcan</div>
+            </article>
+            @include('loan-products._version_modals', ['version' => $version])
+        @empty
+            <div class="product-empty"><i class="mdi mdi-history"></i><h3>No versions configured</h3><p>Create the first version to define lending terms.</p></div>
+        @endforelse
     </div>
+</div>
 
-    <div class="alert alert-info">
-        <strong>Application visibility rule:</strong> this product must be active, and a version must have an effective-from date on or before today. Its effective-to date must be empty or today/later.
-    </div>
-
-    @can('loan-product.version.create')
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <div><h2 class="h5 mb-1">Create a new product version</h2><small class="text-muted">Existing applications and loans retain their original version.</small></div>
-                <button class="btn btn-sm btn-primary" type="button" data-toggle="collapse" data-target="#new-product-version">Configure version</button>
-            </div>
-            <div class="collapse" id="new-product-version">
-                <form class="card-body" method="POST" action="{{ route('loan-products.versions.store', $loanProduct) }}">
-                    @csrf
-                    <h3 class="h6 text-primary">Loan limits and term</h3>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-3"><label class="form-label">Minimum amount</label><input class="form-control" type="number" min="0.01" step="0.01" name="minimum_amount" required></div>
-                        <div class="col-md-3"><label class="form-label">Maximum amount</label><input class="form-control" type="number" min="0.01" step="0.01" name="maximum_amount" required></div>
-                        <div class="col-md-2"><label class="form-label">Minimum term</label><input class="form-control" type="number" min="1" name="minimum_term" required></div>
-                        <div class="col-md-2"><label class="form-label">Maximum term</label><input class="form-control" type="number" min="1" name="maximum_term" required></div>
-                        <div class="col-md-2"><label class="form-label">Term unit</label><select class="form-select" name="term_unit" required><option>Days</option><option>Weeks</option><option selected>Months</option></select></div>
-                    </div>
-
-                    <h3 class="h6 text-primary">Interest and repayment</h3>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-3"><label class="form-label">Interest method</label><select class="form-select" name="interest_method" required><option>Reducing Balance</option><option>Flat</option></select></div>
-                        <div class="col-md-3"><label class="form-label">Interest rate (%)</label><input class="form-control" type="number" min="0" max="100" step="0.0001" name="interest_rate_percent" required><small class="text-muted">Enter 24 for 24%.</small></div>
-                        <div class="col-md-3"><label class="form-label">Rate basis</label><select class="form-select" name="rate_basis" required><option value="Annual">Annual rate</option><option value="Whole Term">Whole-term rate</option></select></div>
-                        <div class="col-md-3"><label class="form-label">Repayment frequency</label><select class="form-select" name="repayment_frequency" required><option>Daily</option><option>Weekly</option><option>Biweekly</option><option selected>Monthly</option></select></div>
-                        <div class="col-md-3"><label class="form-label">Maximum installment ratio (%)</label><input class="form-control" type="number" min="0.01" max="100" step="0.01" name="maximum_installment_ratio_percent" value="50" required></div>
-                        <div class="col-md-3"><label class="form-label">Principal grace periods</label><input class="form-control" type="number" min="0" name="principal_grace_period" value="0" required></div>
-                        <div class="col-md-3"><label class="form-label">Interest grace periods</label><input class="form-control" type="number" min="0" name="interest_grace_period" value="0" required></div>
-                    </div>
-
-                    <h3 class="h6 text-primary">Security and activation</h3>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4"><label class="form-label">Assurance (%)</label><input class="form-control" type="number" name="assurance_percent" min="0" max="100" step="0.0001" value="{{ old('assurance_percent', 3) }}" required><small>Repaid with loan installments without extra interest. Use 0 to disable.</small></div>
-                        <div class="col-md-4"><label class="form-label">Processing fee (fixed amount)</label><input class="form-control" type="number" name="processing_fee" min="0" step="0.01" value="{{ old('processing_fee', 0) }}" required><small>Optional: 0 means no processing fee. Deducted from principal at payout.</small></div>
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-md-3"><label class="form-label">Required guarantors</label><input class="form-control" type="number" min="0" name="required_guarantors" value="0" required></div>
-                        <div class="col-md-3"><label class="form-label">Effective from</label><input class="form-control" type="date" name="effective_from" value="{{ today()->toDateString() }}" required></div>
-                        <div class="col-md-3 form-check align-self-end mb-2"><input class="form-check-input" id="requires_collateral" type="checkbox" name="requires_collateral" value="1"><label class="form-check-label" for="requires_collateral">Collateral required</label></div>
-                    </div>
-                    <button class="btn btn-primary mt-4">Create effective version</button>
-                </form>
-            </div>
-        </div>
-    @endcan
-
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div><h2 class="h4 mb-1">Configured versions</h2><p class="text-muted mb-0">Open a version to manage fees, penalties, and accounting.</p></div>
-        <span class="badge bg-light text-dark">{{ $loanProduct->versions->count() }} version(s)</span>
-    </div>
-
-    @forelse ($loanProduct->versions->sortByDesc('version') as $version)
-        @php($isCurrentlyEffective = $loanProduct->is_active && $version->effective_from->lte(today()) && ($version->effective_to === null || $version->effective_to->gte(today())))
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-                    <div>
-                        <h3 class="h5 mb-1">Version {{ $version->version }}</h3>
-                        <span class="badge {{ $isCurrentlyEffective ? 'bg-success' : 'bg-secondary' }}">{{ $isCurrentlyEffective ? 'Visible in applications' : 'Not currently visible' }}</span>
-                        <small class="text-muted ms-2">{{ $version->effective_from->format('d M Y') }} – {{ $version->effective_to?->format('d M Y') ?? 'Open ended' }}</small>
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary" type="button" data-toggle="collapse" data-target="#version-{{ $version->id }}">Open configuration</button>
-                </div>
-                <div class="row g-3 mt-2">
-                    <div class="col-md-3"><small class="text-muted d-block">Amount range</small><strong>{{ number_format((float) $version->minimum_amount, 2) }} – {{ number_format((float) $version->maximum_amount, 2) }}</strong></div>
-                    <div class="col-md-3"><small class="text-muted d-block">Term range</small><strong>{{ $version->minimum_term }} – {{ $version->maximum_term }} {{ $version->term_unit }}</strong></div>
-                    <div class="col-md-3"><small class="text-muted d-block">Interest</small><strong>{{ number_format((float) $version->interest_rate * 100, 2) }}% {{ $version->rate_basis }}</strong></div>
-                    <div class="col-md-3"><small class="text-muted d-block">Method/frequency</small><strong>{{ $version->interest_method }} · {{ $version->repayment_frequency }}</strong></div>
-                </div>
-            </div>
-
-            <div class="collapse" id="version-{{ $version->id }}">
-                <div class="card-body">
-                    <div class="row g-4">
-                        <div class="col-lg-4">
-                            <h4 class="h6">Fees</h4>
-                            <p>Assurance: <strong>{{ number_format((float) $version->assurance_percent, 2) }}%</strong>, included in loan installments without extra interest.</p>
-                            <p class="small text-muted">Disbursement fees reduce the cash received, while the full principal remains repayable. For example: 500,000 principal minus 10,000 processing fee = 490,000 received.</p>
-                            @forelse ($version->fees as $fee)
-                                <div class="border rounded p-2 mb-2 d-flex justify-content-between gap-2"><span><strong>{{ $fee->name }}</strong><br><small>{{ $fee->calculation_method === 'Percentage' ? number_format((float) $fee->value * 100, 2).'%' : number_format((float) $fee->value, 2) }} · {{ $fee->collection_point }} · {{ $fee->is_financed ? 'Financed' : 'Not financed' }}</small></span>@can('loan-product.fee.manage')<form method="POST" action="{{ route('product-fees.destroy', $fee) }}">@csrf @method('DELETE')<button class="btn btn-sm btn-link text-danger">Remove</button></form>@endcan</div>
-                            @empty <p class="text-muted">No fees configured.</p> @endforelse
-                            @can('loan-product.fee.manage')
-                                <form class="border-top pt-3 mt-3" method="POST" action="{{ route('loan-product-versions.fees.store', $version) }}">@csrf<div class="row g-2"><div class="col-12"><input class="form-control" name="name" placeholder="Fee name" required></div><div class="col-6"><select class="form-select" name="calculation_method"><option>Fixed</option><option>Percentage</option></select></div><div class="col-6"><input class="form-control" type="number" min="0.000001" step="0.000001" name="value" placeholder="Amount or 0.02" required></div><div class="col-7"><select class="form-select" name="collection_point"><option>Disbursement</option><option>Installment</option><option>Upfront</option></select></div><div class="col-5 form-check align-self-center"><input class="form-check-input" id="financed-{{ $version->id }}" type="checkbox" name="is_financed" value="1"><label class="form-check-label" for="financed-{{ $version->id }}">Financed</label></div><div class="col-12"><button class="btn btn-sm btn-primary">Add fee</button></div></div></form>
-                            @endcan
-                        </div>
-
-                        <div class="col-lg-4">
-                            <h4 class="h6">Penalty rules</h4>
-                            @forelse ($version->penaltyRules as $penalty)
-                                <div class="border rounded p-2 mb-2 d-flex justify-content-between gap-2"><span><strong>{{ $penalty->name }}</strong><br><small>{{ $penalty->calculation_method === 'Percentage' ? number_format((float) $penalty->value * 100, 2).'%' : number_format((float) $penalty->value, 2) }} of {{ $penalty->calculation_basis }} · {{ $penalty->frequency }} · {{ $penalty->grace_days }} grace day(s)</small></span>@can('loan-product.penalty.manage')<form method="POST" action="{{ route('product-penalty-rules.destroy', $penalty) }}">@csrf @method('DELETE')<button class="btn btn-sm btn-link text-danger">Remove</button></form>@endcan</div>
-                            @empty <p class="text-muted">No automatic penalty configured.</p> @endforelse
-                            @can('loan-product.fee.manage')
-                                <form class="border-top pt-3 mt-3" method="POST" action="{{ route('loan-product-versions.penalties.store', $version) }}">@csrf<div class="row g-2"><div class="col-12"><input class="form-control" name="name" placeholder="Penalty name" required></div><div class="col-6"><select class="form-select" name="calculation_method"><option>Fixed</option><option>Percentage</option></select></div><div class="col-6"><input class="form-control" type="number" min="0.000001" step="0.000001" name="value" placeholder="Amount or 0.01" required></div><div class="col-6"><select class="form-select" name="calculation_basis"><option>Overdue Principal</option><option>Overdue Installment</option><option>Total Arrears</option></select></div><div class="col-6"><select class="form-select" name="frequency"><option>One-time</option><option>Daily</option></select></div><div class="col-6"><input class="form-control" type="number" min="0" name="grace_days" value="0" placeholder="Grace days" required></div><div class="col-6"><input class="form-control" type="number" min="0.01" step="0.01" name="maximum_amount" placeholder="Maximum amount"></div><div class="col-12"><button class="btn btn-sm btn-primary">Add penalty rule</button></div></div></form>
-                            @endcan
-                        </div>
-
-                        <div class="col-lg-4">
-                            <h4 class="h6">Accounting mappings</h4>
-                            <p class="small text-muted">These accounts control disbursement, repayment, fee, interest, and penalty journals.</p>
-                            @can('loan-product.accounting.manage')
-                                <form method="POST" action="{{ route('loan-product-versions.account-mappings.update', $version) }}">@csrf @method('PUT')
-                                    @foreach (['cash_account' => 'Cash', 'bank_account' => 'Bank', 'mobile_money_account' => 'Mobile money', 'loan_receivable' => 'Loan receivable', 'interest_income' => 'Interest income', 'fee_income' => 'Fee income', 'penalty_income' => 'Penalty income'] as $purpose => $label)
-                                        <div class="mb-2"><label class="form-label small mb-1">{{ $label }}</label><select class="form-select form-select-sm" name="mappings[{{ $purpose }}]" required><option value="">Select account</option>@foreach ($accounts as $account)<option value="{{ $account->id }}" @selected($version->accountMappings->firstWhere('purpose', $purpose)?->chart_of_account_id === $account->id)>{{ $account->code }} — {{ $account->name }}</option>@endforeach</select></div>
-                                    @endforeach
-                                    <button class="btn btn-sm btn-primary mt-2">Save mappings</button>
-                                </form>
-                            @else
-                                @foreach ($version->accountMappings as $mapping)<div class="small border-bottom py-1">{{ str($mapping->purpose)->replace('_', ' ')->title() }}: {{ $mapping->account->code }} — {{ $mapping->account->name }}</div>@endforeach
-                            @endcan
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @empty
-        <div class="alert alert-warning">This product has no configured version and therefore cannot appear in loan applications.</div>
-    @endforelse
-    @can('loan-product.fee.manage')
-        <div class="card border-0 shadow-sm mt-4">
-            <div class="card-header bg-white"><h2 class="h5 mb-1">Penalty rule management</h2><small class="text-muted">Unused rules can be edited or permanently removed. Rules already applied to loans are retained for audit history.</small></div>
-            <div class="table-responsive"><table class="table align-middle mb-0">
-                <thead><tr><th>Version</th><th>Rule</th><th>Calculation</th><th>Usage</th><th>Status</th><th></th></tr></thead>
-                <tbody>
-                    @forelse ($loanProduct->versions->sortByDesc('version') as $version)
-                        @foreach ($version->penaltyRules as $penalty)
-                            @php($chargeCount = $penalty->charges()->count())
-                            <tr>
-                                <td>Version {{ $version->version }}</td>
-                                <td>{{ $penalty->name }}</td>
-                                <td>{{ $penalty->calculation_method === 'Percentage' ? number_format((float) $penalty->value * 100, 2).'%' : number_format((float) $penalty->value, 2) }} · {{ $penalty->calculation_basis }}</td>
-                                <td>{{ $chargeCount }} charge(s)</td>
-                                <td>{{ $penalty->is_active ? 'Active' : 'Inactive' }}</td>
-                                <td class="text-end">
-                                    @if ($chargeCount === 0)
-                                        <a class="btn btn-sm btn-outline-primary" href="{{ route('product-penalty-rules.edit', $penalty) }}">Edit</a>
-                                        <form class="d-inline" method="POST" action="{{ route('product-penalty-rules.destroy', $penalty) }}" onsubmit="return confirm('Remove this unused penalty rule permanently?')">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button class="btn btn-sm btn-outline-danger">Remove</button>
-                                        </form>
-                                    @else
-                                        <span class="small text-muted me-2">Calculation locked</span>
-                                    @endif
-                                    <form class="d-inline" method="POST" action="{{ route('product-penalty-rules.status', $penalty) }}">
-                                        @csrf
-                                        @method('PATCH')
-                                        <button class="btn btn-sm btn-outline-secondary">{{ $penalty->is_active ? 'Deactivate' : 'Activate' }}</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        @endforeach
-                    @empty
-                    @endforelse
-                </tbody>
-            </table></div>
-        </div>
-    @endcan
+@can('loan-product.version.create')
+<div class="product-overlay" id="create-version"><a class="product-backdrop" href="#versions-top" aria-label="Close"></a><section class="product-modal" role="dialog" aria-modal="true"><header><div><h2>Create version {{ ($latestVersion?->version ?? 0) + 1 }}</h2><p>New loans use these terms from the effective date. Existing loans remain unchanged.</p></div><a href="#versions-top"><i class="mdi mdi-close"></i></a></header><div class="product-modal-body"><form id="create-version-form" method="POST" action="{{ route('loan-products.versions.store', $loanProduct) }}">@csrf @include('loan-products._version_fields', ['version' => $latestVersion])</form></div><footer><a class="product-secondary" href="#versions-top">Cancel</a><button class="product-primary" form="create-version-form"><i class="mdi mdi-content-save-outline"></i> Publish version</button></footer></section></div>
+@endcan
+@include('loan-products._management_styles')
+@include('loan-products._version_styles')
+<script>document.addEventListener('keydown',function(e){if(e.key==='Escape'&&location.hash.includes('version'))location.hash='versions-top'});</script>
 @endsection

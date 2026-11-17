@@ -1,0 +1,8 @@
+@extends('layouts.app')
+@section('title', 'Collateral')
+@section('content')
+@include('partials.alerts')
+<div class="mb-4"><h1 class="h3 mb-1">Collateral register</h1><p class="text-muted mb-0">Read-only register. Collateral is created and pledged from a specific loan application.</p></div>
+<form class="card card-body border-0 shadow-sm mb-4" method="GET"><div class="input-group"><input class="form-control" name="search" value="{{ request('search') }}" placeholder="Search number, description or ownership reference"><button class="btn btn-outline-primary">Search</button></div></form>
+<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Asset</th><th>Owner</th><th>Ownership</th><th>Market value</th><th>Forced-sale value</th><th>Status</th><th>Verification</th></tr></thead><tbody>@forelse($collaterals as $collateral)<tr><td><strong>{{ $collateral->collateral_number }}</strong><br>{{ $collateral->description }}</td><td>{{ $collateral->customer->first_name }} {{ $collateral->customer->last_name }}</td><td>{{ $collateral->ownership_reference }}</td><td>{{ number_format((float)$collateral->market_value,2) }}</td><td>{{ number_format((float)$collateral->forced_sale_value,2) }}</td><td>{{ $collateral->status }}</td><td>@if($collateral->status !== 'Verified')@can('collateral.verify')<form method="POST" action="{{ route('collaterals.verify',$collateral) }}">@csrf<button class="btn btn-sm btn-success">Verify</button></form>@endcan @else {{ $collateral->verified_at?->format('d M Y') }} @endif</td></tr>@empty<tr><td colspan="7" class="text-center text-muted">No collateral found.</td></tr>@endforelse</tbody></table></div><div class="card-body">{{ $collaterals->links() }}</div></div>
+@endsection

@@ -346,6 +346,46 @@ body.sidebar-collapsed .main-panel {
     margin-left: var(--sidebar-collapsed-width);
 }
 
+@media (min-width: 768px) {
+    body.sidebar-collapsed .sidebar:hover,
+    body.sidebar-collapsed .sidebar:focus-within {
+        width: var(--sidebar-width);
+        box-shadow: 12px 0 32px rgba(23, 32, 51, 0.14);
+    }
+
+    body.sidebar-collapsed .sidebar:hover .nav-heading,
+    body.sidebar-collapsed .sidebar:hover .nav-item span:not(.arrow),
+    body.sidebar-collapsed .sidebar:hover .arrow,
+    body.sidebar-collapsed .sidebar:hover .nav-children,
+    body.sidebar-collapsed .sidebar:focus-within .nav-heading,
+    body.sidebar-collapsed .sidebar:focus-within .nav-item span:not(.arrow),
+    body.sidebar-collapsed .sidebar:focus-within .arrow,
+    body.sidebar-collapsed .sidebar:focus-within .nav-children {
+        display: block;
+    }
+
+    body.sidebar-collapsed .sidebar:hover .nav-item,
+    body.sidebar-collapsed .sidebar:focus-within .nav-item {
+        justify-content: flex-start;
+        padding: 0 12px;
+    }
+
+    body.sidebar-collapsed .sidebar:hover .brand,
+    body.sidebar-collapsed .sidebar:focus-within .brand {
+        justify-content: flex-start;
+        padding: 0 19px;
+    }
+
+    body.sidebar-collapsed .sidebar:hover .nav-item[data-tooltip]::after,
+    body.sidebar-collapsed .sidebar:focus-within .nav-item[data-tooltip]::after {
+        display: none;
+    }
+
+    .menu-toggle {
+        display: none;
+    }
+}
+
 /* Tooltip shown for collapsed items on hover (desktop only) */
 body.sidebar-collapsed .nav-item[data-tooltip]:hover::after {
     position: absolute;

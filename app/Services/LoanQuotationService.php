@@ -15,7 +15,11 @@ class LoanQuotationService
         }
 
         $periods = $this->periods($version, $term);
-        $periodicRate = (float) $version->interest_rate / ($version->rate_basis === 'Whole Term' ? $periods : $this->periodsPerYear($version->repayment_frequency));
+        $periodicRate = match ($version->rate_basis) {
+            'Monthly' => (float) $version->interest_rate / ($version->repayment_frequency === 'Monthly' ? 1 : $this->periodsPerYear($version->repayment_frequency) / 12),
+            'Whole Term' => (float) $version->interest_rate / $periods,
+            default => (float) $version->interest_rate / $this->periodsPerYear($version->repayment_frequency),
+        };
         $schedule = $this->schedule($version->interest_method, $amount, $periods, $periodicRate);
         $installment = collect($schedule)->max('installment');
         $totalInterest = collect($schedule)->sum('interest');
@@ -33,8 +37,9 @@ class LoanQuotationService
             $fees->push(['name' => 'Assurance', 'amount' => $assurance, 'collection_point' => 'Installment', 'is_financed' => true]);
         }
         $totalFees += $assurance;
-        $scheduledFees = $fees->filter(fn (array $fee): bool => $fee['collection_point'] === 'Installment' || $fee['is_financed'])->sum('amount');
-        $schedule = $this->applyScheduledFees($schedule, $scheduledFees);
+        $scheduledFees = $fees->reject(fn (array $fee): bool => $fee['name'] === 'Assurance')
+            ->filter(fn (array $fee): bool => $fee['collection_point'] === 'Installment' || $fee['is_financed'])->sum('amount');
+        $schedule = $this->applyScheduledFees($schedule, $scheduledFees, $assurance);
         $installment = collect($schedule)->max('installment');
         $deductedFees = $fees->where('collection_point', 'Disbursement')->where('is_financed', false)->sum('amount');
         $disposableIncome = max(0, $monthlyIncome - $monthlyExpenses - $existingDebtPayment);
@@ -58,7 +63,7 @@ class LoanQuotationService
             'total_fees' => round($totalFees, 2),
             'assurance_percent' => (float) $version->assurance_percent,
             'assurance_amount' => $assurance,
-            'total_repayment' => round($totalRepaymentBeforeFees + $scheduledFees, 2),
+            'total_repayment' => round($totalRepaymentBeforeFees + $scheduledFees + $assurance, 2),
             'total_customer_cost' => round($totalRepaymentBeforeFees + $totalFees, 2),
             'estimated_net_disbursement' => round(max(0, $amount - $deductedFees), 2),
             'projected_schedule' => $schedule,
@@ -91,15 +96,15 @@ class LoanQuotationService
     }
 
     /** @param array<int, array<string, int|float>> $schedule @return array<int, array<string, int|float>> */
-    private function applyScheduledFees(array $schedule, float $totalFees): array
+    private function applyScheduledFees(array $schedule, float $totalFees, float $firstInstallmentFee = 0): array
     {
         $feeMinor = (int) round($totalFees * 100);
         $periods = count($schedule);
         $base = intdiv($feeMinor, $periods);
         $remainder = $feeMinor - ($base * $periods);
 
-        return collect($schedule)->map(function (array $row, int $index) use ($base, $remainder, $periods): array {
-            $fee = ($base + ($index === $periods - 1 ? $remainder : 0)) / 100;
+        return collect($schedule)->map(function (array $row, int $index) use ($base, $remainder, $periods, $firstInstallmentFee): array {
+            $fee = ($base + ($index === $periods - 1 ? $remainder : 0)) / 100 + ($index === 0 ? $firstInstallmentFee : 0);
             $row['fees'] = round($fee, 2);
             $row['installment'] = round((float) $row['installment'] + $fee, 2);
 

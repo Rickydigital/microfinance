@@ -1,32 +1,29 @@
 @extends('layouts.app')
-@section('title', 'Repayments')
+@section('title', 'Collections and repayments')
 @section('content')
+<div id="repayments-top" class="cash-page">
     @include('partials.alerts')
-    @can('repayment.approve')<a class="btn btn-outline-primary mb-3" href="{{ route('payment-submissions.index') }}">Customer payment approvals</a>@endcan
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div><h1 class="h3 mb-1">Repayments</h1><p class="text-muted mb-0">Posted customer loan receipts</p></div>
-        <a class="btn btn-primary" href="{{ route('repayments.create') }}">Receive payment</a>
-    </div>
-    <form class="card card-body border-0 shadow-sm mb-4" method="GET"><div class="row g-2"><div class="col-md-10"><input class="form-control" name="search" value="{{ request('search') }}" placeholder="Receipt, external reference, loan, customer or phone"></div><div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Search repayments</button></div></div></form>
-    <div class="card border-0 shadow-sm">
-        <div class="table-responsive"><table class="table table-hover align-middle mb-0">
-            <thead><tr><th>Receipt</th><th>Customer</th><th>Loan</th><th>Amount</th><th>Method</th><th>Received</th><th></th></tr></thead>
-            <tbody>
-                @forelse ($repayments as $repayment)
-                    <tr>
-                        <td>{{ $repayment->receipt_number }}</td>
-                        <td>{{ $repayment->loan->customer->first_name }} {{ $repayment->loan->customer->last_name }}</td>
-                        <td>{{ $repayment->loan->loan_number }}</td>
-                        <td>{{ config('microfinance.currency') }} {{ number_format((float) $repayment->amount, 2) }}</td>
-                        <td>{{ $repayment->payment_method }}</td>
-                        <td>{{ $repayment->paid_at->format('d M Y H:i') }}</td>
-                        <td><a class="btn btn-sm btn-outline-primary" href="{{ route('repayments.show', $repayment) }}">Receipt</a></td>
-                    </tr>
-                @empty
-                    <tr><td colspan="7" class="text-center text-muted py-5">No repayments posted.</td></tr>
-                @endforelse
-            </tbody>
-        </table></div>
-        <div class="card-body">{{ $repayments->links() }}</div>
-    </div>
+    <header><div><span>Collections</span><h1>Repayments</h1><p>Receive payments, confirm live balances and preserve a complete allocation history.</p></div><div>@can('repayment.approve')<a class="cash-secondary" href="{{ route('payment-submissions.index') }}">Payment approvals</a>@endcan @can('repayment.collect')<a class="cash-primary" href="#receive-payment"><i class="mdi mdi-cash-plus"></i> Receive payment</a>@endcan</div></header>
+    <section class="cash-metrics">@foreach([['Collected today','TZS '.number_format((float)$metrics['today']),'mdi-calendar-today'],['Collected this month','TZS '.number_format((float)$metrics['month']),'mdi-chart-line'],['Total posted','TZS '.number_format((float)$metrics['total']),'mdi-receipt-text-check-outline'],['Loans accepting payment',$metrics['unpaid_loans'],'mdi-cash-clock']] as [$label,$value,$icon])<div><i class="mdi {{ $icon }}"></i><span><small>{{ $label }}</small><strong>{{ is_numeric($value) ? number_format($value) : $value }}</strong></span></div>@endforeach</section>
+    <form class="cash-filter" method="GET"><i class="mdi mdi-magnify"></i><input name="search" value="{{ request('search') }}" placeholder="Search receipt, loan, customer, phone or external reference"><button>Search</button></form>
+    <section class="cash-table"><table><thead><tr><th>Receipt</th><th>Borrower</th><th>Loan</th><th>Amount</th><th>Method</th><th>Received</th><th></th></tr></thead><tbody>@forelse($repayments as $item)<tr><td><strong>{{ $item->receipt_number }}</strong><small>{{ $item->external_reference ?: 'No external reference' }}</small></td><td><strong>{{ $item->loan->customer->first_name }} {{ $item->loan->customer->last_name }}</strong><small>{{ $item->loan->customer->phone }}</small></td><td><a href="{{ route('loans.show', $item->loan) }}">{{ $item->loan->loan_number }}</a></td><td><strong>TZS {{ number_format((float)$item->amount) }}</strong></td><td>{{ $item->payment_method }}</td><td><strong>{{ $item->paid_at->format('d M Y') }}</strong><small>{{ $item->paid_at->format('H:i') }}</small></td><td><a class="cash-action" href="{{ route('repayments.show', $item) }}">Receipt</a></td></tr>@empty<tr><td colspan="7">No repayments posted.</td></tr>@endforelse</tbody></table><footer>{{ $repayments->links() }}</footer></section>
+</div>
+@can('repayment.collect')
+<div class="cash-overlay" id="receive-payment"><a class="cash-backdrop" href="#repayments-top"></a><section>
+    <header><div><h2>Receive loan payment</h2><p>Choose the account, confirm its balance, then record the payment.</p></div><a href="#repayments-top"><i class="mdi mdi-close"></i></a></header>
+    <div class="payment-steps"><span><b>1</b>Select loan</span><span><b>2</b>Confirm payment</span><span><b>3</b>Receipt & allocation</span></div>
+    <form id="receive-form" method="POST" action="{{ route('repayments.store') }}">@csrf
+        <label>Loan account<select name="loan_id" required><option value="">Search or select a loan</option>@foreach($loans as $loan)@php($principal=$loan->installments->sum(fn($i)=>max(0,(float)$i->principal_due-(float)$i->principal_paid)))@php($interest=$loan->installments->sum(fn($i)=>max(0,(float)$i->interest_due-(float)$i->interest_paid)))@php($fees=$loan->installments->sum(fn($i)=>max(0,(float)$i->fees_due-(float)$i->fees_paid)))@php($penalties=$loan->installments->sum(fn($i)=>max(0,(float)$i->penalties_due-(float)$i->penalties_paid)))@php($total=$principal+$interest+$fees+$penalties)<option value="{{ $loan->id }}" data-principal="{{ $principal }}" data-interest="{{ $interest }}" data-fees="{{ $fees }}" data-penalties="{{ $penalties }}" data-total="{{ $total }}">{{ $loan->loan_number }} — {{ $loan->customer->first_name }} {{ $loan->customer->last_name }} — TZS {{ number_format($total) }}</option>@endforeach</select></label>
+        <div class="payment-balance" data-payment-balance hidden><div><small>Total outstanding</small><strong data-balance-total></strong></div><div><span>Principal <b data-balance-principal></b></span><span>Interest <b data-balance-interest></b></span><span>Fees <b data-balance-fees></b></span><span>Penalties <b data-balance-penalties></b></span></div></div>
+        <label>Payment amount<input type="number" name="amount" min="0.01" step="0.01" required><small>Allocation order: penalties, fees, interest, then principal.</small></label>
+        <label>Payment method<select name="payment_method" required><option>Cash</option><option>Bank</option><option>Mobile Money</option></select></label>
+        <label>External reference<input name="external_reference" placeholder="Bank, wallet or receipt reference"></label>
+        <label>Payment date and time<input type="datetime-local" name="paid_at" value="{{ now()->format('Y-m-d\TH:i') }}" max="{{ now()->format('Y-m-d\TH:i') }}" required></label>
+    </form>
+    <footer><a href="#repayments-top">Cancel</a><button class="cash-primary" form="receive-form">Post payment and issue receipt</button></footer>
+</section></div>
+@endcan
+@include('loan-disbursements._styles')
+<style>.cash-page>header>div:last-child{display:flex;gap:9px}.cash-secondary{display:inline-flex;align-items:center;padding:11px 15px;border:1px solid #dce4df;border-radius:12px;background:#fff;color:#344557;text-decoration:none}.cash-filter{position:relative;display:flex;gap:10px;background:#fff;border:1px solid #e0e7e2;border-radius:16px;padding:12px;margin-bottom:16px}.cash-filter i{position:absolute;left:25px;top:22px;color:#8793a1;font-size:20px}.cash-filter input{flex:1;border:1px solid #dce4df;border-radius:11px;padding:10px 12px 10px 43px}.cash-filter button{border:0;border-radius:11px;padding:0 18px;background:#edf7f4;color:#176656;font-weight:750}.cash-table td>a{color:#176656}.payment-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:0 25px 16px}.payment-steps span{color:#75827c;font-size:10px;font-weight:700}.payment-steps b{display:inline-grid;place-items:center;width:20px;height:20px;margin-right:5px;border-radius:50%;background:#e7f5f1;color:#176656}.payment-balance{margin:4px 0 14px;padding:14px;border-radius:13px;background:#f2f8f5}.payment-balance>div:first-child{display:flex;justify-content:space-between;margin-bottom:8px}.payment-balance small{color:#718078}.payment-balance>div:last-child{display:grid;grid-template-columns:1fr 1fr;gap:5px}.payment-balance span{display:flex;justify-content:space-between;color:#718078;font-size:10px}.payment-balance b{color:#27382f}</style>
+<script>document.addEventListener('DOMContentLoaded',function(){const loan=document.querySelector('#receive-payment select[name="loan_id"]');const money=value=>'TZS '+Number(value||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});const sync=function(){const option=loan?.selectedOptions[0];const box=document.querySelector('[data-payment-balance]');if(!option?.value){if(box)box.hidden=true;return}box.hidden=false;document.querySelector('[data-balance-total]').textContent=money(option.dataset.total);document.querySelector('[data-balance-principal]').textContent=money(option.dataset.principal);document.querySelector('[data-balance-interest]').textContent=money(option.dataset.interest);document.querySelector('[data-balance-fees]').textContent=money(option.dataset.fees);document.querySelector('[data-balance-penalties]').textContent=money(option.dataset.penalties);document.querySelector('#receive-payment [name="amount"]').max=option.dataset.total};loan?.addEventListener('change',sync);if(window.jQuery&&window.jQuery.fn.select2){window.jQuery(loan).select2({width:'100%',dropdownParent:window.jQuery('#receive-payment'),placeholder:'Search loan number, customer or phone'}).on('select2:select select2:clear',sync)}sync()});</script>
 @endsection

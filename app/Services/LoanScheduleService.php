@@ -22,15 +22,20 @@ class LoanScheduleService
             $periods = $this->numberOfPeriods($version->repayment_frequency, $loan->application->requested_term, $version->term_unit);
             $principalMinor = $this->toMinorUnits($loan->principal_amount);
             $annualRate = (float) $version->interest_rate;
-            $periodRate = $annualRate / ($version->rate_basis === 'Whole Term' ? $periods : $this->periodsPerYear($version->repayment_frequency));
+            $periodRate = match ($version->rate_basis) {
+                'Monthly' => $annualRate / ($version->repayment_frequency === 'Monthly' ? 1 : $this->periodsPerYear($version->repayment_frequency) / 12),
+                'Whole Term' => $annualRate / $periods,
+                default => $annualRate / $this->periodsPerYear($version->repayment_frequency),
+            };
             $principalBase = intdiv($principalMinor, $periods);
             $principalRemainder = $principalMinor - ($principalBase * $periods);
             $outstanding = $principalMinor;
             $scheduledFeeMinor = $version->fees
                 ->filter(fn ($fee): bool => $fee->collection_point === 'Installment' || $fee->is_financed)
+                ->reject(fn ($fee): bool => strcasecmp($fee->name, 'Assurance') === 0)
                 ->sum(fn ($fee): int => $this->toMinorUnits($fee->calculation_method === 'Percentage' ? (float) $loan->principal_amount * (float) $fee->value : $fee->value));
             $assurancePaid = (float) $loan->application->paymentSubmissions()->where('purpose', 'Assurance')->where('status', 'Approved')->sum('amount');
-            $scheduledFeeMinor += $this->toMinorUnits(max(0, $loan->application->assuranceAmount() - $assurancePaid));
+            $assuranceMinor = $this->toMinorUnits(max(0, $loan->application->assuranceAmount() - $assurancePaid));
             $feeBase = intdiv($scheduledFeeMinor, $periods);
             $feeRemainder = $scheduledFeeMinor - ($feeBase * $periods);
 
@@ -44,7 +49,7 @@ class LoanScheduleService
                     'due_date' => $this->dueDate($firstDueDate, $version->repayment_frequency, $number - 1),
                     'principal_due' => $this->fromMinorUnits($principal),
                     'interest_due' => $this->fromMinorUnits($interest),
-                    'fees_due' => $this->fromMinorUnits($feeBase + ($number === $periods ? $feeRemainder : 0)),
+                    'fees_due' => $this->fromMinorUnits($feeBase + ($number === $periods ? $feeRemainder : 0) + ($number === 1 ? $assuranceMinor : 0)),
                     'penalties_due' => 0,
                     'status' => 'Pending',
                 ]);

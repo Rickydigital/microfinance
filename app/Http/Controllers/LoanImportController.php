@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\Reader\Exception;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -24,8 +25,17 @@ class LoanImportController extends Controller
     {
         return response()->streamDownload(function (): void {
             $book = new Spreadsheet;
-            $book->getActiveSheet()->fromArray(HistoricalLoanImportService::HEADERS);
-            $book->getActiveSheet()->freezePane('A2');
+            $sheet = $book->getActiveSheet();
+            $sheet->fromArray([HistoricalLoanImportService::HEADERS, ['LOAN-0001', 'CUST-0001', 'STANDARD-MICRO', 1, 500000, 490000, 10000, today()->toDateString(), 0, 'Active']]);
+            $sheet->freezePane('A2');
+            $sheet->getStyle('A1:J1')->getFont()->setBold(true);
+            $sheet->getStyle('A1:J1')->getFill()->setFillType('solid')->getStartColor()->setARGB('DCE6F1');
+            $validation = $sheet->getCell('J2')->getDataValidation();
+            $validation->setType(DataValidation::TYPE_LIST)->setErrorStyle(DataValidation::STYLE_STOP)->setAllowBlank(false)->setShowErrorMessage(true)->setErrorTitle('Invalid status')->setError('Choose Active, In Arrears, or Settled.')->setFormula1('"Active,In Arrears,Settled"');
+            $sheet->setDataValidation('J2:J2001', $validation);
+            foreach (range('A', 'J') as $column) {
+                $sheet->getColumnDimension($column)->setAutoSize(true);
+            }
             (new Xlsx($book))->save('php://output');
             $book->disconnectWorksheets();
         }, 'historical-loans-template.xlsx', ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);

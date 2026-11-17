@@ -11,6 +11,7 @@ use App\Services\CustomerKycReadinessService;
 use App\Services\LoanApplicationPresentationService;
 use App\Services\LoanQuotationService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -42,9 +43,29 @@ class PdfDocumentController extends Controller
     {
         $definition = $this->reportDefinition($request, $report);
         $branchId = $request->user()->branch_id;
-        $metrics = ['active_loans' => Loan::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('status', 'Active')->count(), 'outstanding_principal' => Loan::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->sum('outstanding_principal'), 'collections' => Repayment::query()->when($branchId, fn ($query) => $query->whereHas('loan', fn ($loan) => $loan->where('branch_id', $branchId)))->where('status', 'Posted')->sum('amount'), 'open_cases' => CollectionCase::query()->when($branchId, fn ($query) => $query->whereHas('loan', fn ($loan) => $loan->where('branch_id', $branchId)))->whereNotIn('status', ['Closed', 'Resolved'])->count(), 'debits' => JournalLine::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->sum('debit'), 'credits' => JournalLine::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->sum('credit')];
+        $from = $request->filled('from') ? CarbonImmutable::parse($request->string('from')->toString())->startOfDay() : null;
+        $to = $request->filled('to') ? CarbonImmutable::parse($request->string('to')->toString())->endOfDay() : null;
+        $metrics = ['active_loans' => Loan::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('status', 'Active')->count(), 'outstanding_principal' => Loan::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->sum('outstanding_principal'), 'collections' => Repayment::query()->when($branchId, fn ($query) => $query->whereHas('loan', fn ($loan) => $loan->where('branch_id', $branchId)))->where('status', 'Posted')->when($from, fn ($query) => $query->where('paid_at', '>=', $from))->when($to, fn ($query) => $query->where('paid_at', '<=', $to))->sum('amount'), 'open_cases' => CollectionCase::query()->when($branchId, fn ($query) => $query->whereHas('loan', fn ($loan) => $loan->where('branch_id', $branchId)))->whereNotIn('status', ['Closed', 'Resolved'])->count(), 'debits' => JournalLine::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->sum('debit'), 'credits' => JournalLine::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->sum('credit')];
+        $statusDistribution = Loan::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->selectRaw('status, COUNT(*) as total, SUM(outstanding_principal) as outstanding')->groupBy('status')->orderByDesc('total')->get();
+        $records = match ($definition['dataset']) {
+            'collections' => Repayment::query()->with(['loan.customer', 'receiver'])
+                ->when($branchId, fn ($query) => $query->whereHas('loan', fn ($loan) => $loan->where('branch_id', $branchId)))
+                ->when($from, fn ($query) => $query->where('paid_at', '>=', $from))
+                ->when($to, fn ($query) => $query->where('paid_at', '<=', $to))
+                ->latest('paid_at')->get(),
+            'operational' => LoanApplication::query()->with(['customer', 'productVersion.product'])
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->when($from, fn ($query) => $query->where('created_at', '>=', $from))
+                ->when($to, fn ($query) => $query->where('created_at', '<=', $to))
+                ->latest()->get(),
+            default => Loan::query()->with(['customer', 'application.productVersion.product'])
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->when($from, fn ($query) => $query->where('disbursed_at', '>=', $from))
+                ->when($to, fn ($query) => $query->where('disbursed_at', '<=', $to))
+                ->orderBy('loan_number')->get(),
+        };
 
-        return Pdf::loadView('pdf.report', compact('report', 'definition', 'metrics'))->setPaper('a4')->download($report.'-report-'.today()->format('Ymd').'.pdf');
+        return Pdf::loadView('pdf.report', compact('report', 'definition', 'metrics', 'statusDistribution', 'records', 'from', 'to'))->setPaper('a4', 'landscape')->stream($report.'-report-'.today()->format('Ymd').'.pdf');
     }
 
     /** @return array{label: string, dataset: string, group: string, group_label: string, permission: string} */

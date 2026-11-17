@@ -85,7 +85,8 @@
             <h3>No applications yet</h3>
             <p>Your first application takes about five minutes — we'll walk you through the numbers before you submit.</p>
             <a href="{{ route('portal.applications.create') }}" class="btn btn-primary">Start an application</a>
-        </div>
+        </d
+        iv>
     @endif
 </div>
 

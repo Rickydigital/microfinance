@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('title', 'Edit customer')
 @section('content')
-    <h1 class="h3 mb-4">Edit customer</h1>
-    <form class="card card-body border-0 shadow-sm" method="POST" action="{{ route('customers.update', $customer) }}">@csrf @method('PUT') @include('customers._form')</form>
+    <div class="d-flex justify-content-between align-items-center mb-4"><div><span class="text-uppercase text-muted small">Customer profile</span><h1 class="h3 mb-1">Edit and verify customer</h1><p class="text-muted mb-0">Update the profile first, then complete identification and evidence verification.</p></div><span class="badge {{ $customer->status->value === 'Active' ? 'text-bg-success' : 'text-bg-warning' }}">{{ $customer->status->value }}</span></div>
+    <div class="row g-4"><div class="col-lg-8"><form class="card border-0 shadow-sm" method="POST" action="{{ route('customers.update', $customer) }}">@csrf @method('PUT')<div class="card-header bg-white"><strong>Personal and contact information</strong><small class="d-block text-muted">Keep names, phone number, and address accurate for communication and KYC.</small></div><div class="card-body">@include('customers._form')</div><div class="card-footer bg-white d-flex gap-2"><button class="btn btn-primary">Save customer</button><a class="btn btn-outline-secondary" href="{{ route('customers.show', $customer) }}">Cancel</a></div></form></div><div class="col-lg-4"><div class="card border-0 shadow-sm"><div class="card-header bg-white"><strong>Verification progress</strong></div><div class="card-body">@include('customers._evidence_verification', ['customer' => $customer])</div></div></div></div>
 @endsection

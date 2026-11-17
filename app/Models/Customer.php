@@ -35,6 +35,11 @@ class Customer extends Authenticatable
         return ['status' => CustomerStatus::class, 'date_of_birth' => 'date', 'verified_at' => 'datetime', 'password' => 'hashed', 'must_change_password' => 'boolean', 'portal_registered_at' => 'datetime', 'portal_last_login_at' => 'datetime'];
     }
 
+    public function kycDecisions(): HasMany
+    {
+        return $this->hasMany(CustomerKycDecision::class);
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

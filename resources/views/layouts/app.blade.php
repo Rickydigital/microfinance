@@ -14,17 +14,13 @@
     <link rel="stylesheet" href="{{ asset('app-assets/css/microfinance.css') }}">
     <link rel="stylesheet" href="{{ asset('app-assets/css/staff-design-system.css') }}">
 </head>
-<body>
+<body class="sidebar-collapsed">
     <div class="app-shell">
         <div class="sidebar-backdrop" data-sidebar-backdrop></div>
 
         <aside class="sidebar" id="sidebar">
             <a class="brand" href="{{ route('dashboard') }}">
                 <span class="brand-mark">CM</span>
-                <span class="brand-text">
-                    <strong>{{ config('microfinance.institution_name') }}</strong>
-                    <small>Core banking system</small>
-                </span>
             </a>
             <nav class="sidebar-nav" aria-label="Primary navigation">
                 <span class="nav-heading">Operations</span>
@@ -37,14 +33,14 @@
                             <i class="mdi {{ $item['icon'] }}"></i><span>{{ $item['label'] }}</span>
                         </a>
                     @else
-                        <details class="nav-group">
+                        <details class="nav-group" @if (collect($item['items'])->contains(fn ($child) => request()->routeIs($child['route']))) open @endif>
                             <summary class="nav-item" data-tooltip="{{ $item['label'] }}">
                                 <i class="mdi {{ $item['icon'] }}"></i><span>{{ $item['label'] }}</span><i class="mdi mdi-chevron-down arrow"></i>
                             </summary>
                             <div class="nav-children">
                                 @foreach ($item['items'] as $child)
                                     @continue(isset($child['permission']) && auth()->user()->cannot($child['permission']))
-                                    <a href="{{ route($child['route'], $child['parameters'] ?? []) }}">{{ $child['label'] }}</a>
+                                    <a class="{{ request()->routeIs($child['route']) ? 'active' : '' }}" href="{{ route($child['route'], $child['parameters'] ?? []) }}">{{ $child['label'] }}</a>
                                 @endforeach
                             </div>
                         </details>

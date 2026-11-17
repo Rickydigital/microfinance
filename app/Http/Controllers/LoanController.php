@@ -19,13 +19,22 @@ class LoanController extends Controller implements HasMiddleware
      */
     public function index(Request $request): View
     {
-        $loans = Loan::query()->with('customer')
+        $portfolioScope = Loan::query()
             ->when($request->user()->branch_id, fn ($query, $branchId) => $query->where('branch_id', $branchId))
             ->when($request->string('search')->toString(), fn ($query, string $search) => $query->where(fn ($query) => $query->where('loan_number', 'like', "%{$search}%")->orWhereHas('customer', fn ($customer) => $customer->where('customer_number', 'like', "%{$search}%")->orWhere('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"))))
-            ->when($request->string('status')->toString(), fn ($query, string $status) => $query->where('status', $status))
+            ->when($request->string('status')->toString(), fn ($query, string $status) => $query->where('status', $status));
+        $loans = (clone $portfolioScope)->with(['customer', 'application.productVersion.product'])
             ->latest()->paginate(20)->withQueryString();
+        $summary = [
+            'accounts' => (clone $portfolioScope)->count(),
+            'principal' => (clone $portfolioScope)->sum('principal_amount'),
+            'outstanding' => (clone $portfolioScope)->sum('outstanding_principal'),
+            'arrears' => (clone $portfolioScope)->sum('arrears_amount'),
+        ];
+        $statusDistribution = (clone $portfolioScope)->selectRaw('status, COUNT(*) as total, SUM(outstanding_principal) as outstanding')->groupBy('status')->orderByDesc('total')->get();
+        $productDistribution = (clone $portfolioScope)->with('application.productVersion.product')->get()->groupBy(fn (Loan $loan): string => $loan->application?->productVersion?->product?->name ?? 'Unclassified')->map(fn ($items, string $name): array => ['name' => $name, 'count' => $items->count(), 'amount' => (float) $items->sum('principal_amount')])->sortByDesc('amount')->values();
 
-        return view('loans.index', compact('loans'));
+        return view('loans.index', compact('loans', 'summary', 'statusDistribution', 'productDistribution'));
     }
 
     /**

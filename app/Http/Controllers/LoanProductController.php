@@ -34,8 +34,9 @@ class LoanProductController extends Controller implements HasMiddleware
 
     public function index(Request $request): View
     {
-        $loanProducts = LoanProduct::query()->withCount('versions')
+        $loanProducts = LoanProduct::query()->with(['latestVersion.fees', 'latestVersion.penaltyRules'])->withCount('versions')
             ->when($request->string('search')->toString(), fn ($query, string $search) => $query->where(fn ($query) => $query->where('code', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%")))
+            ->when($request->string('status')->toString(), fn ($query, string $status) => $query->where('is_active', $status === 'active'))
             ->orderBy('name')->paginate(20)->withQueryString();
 
         return view('loan-products.index', compact('loanProducts'));
@@ -48,10 +49,64 @@ class LoanProductController extends Controller implements HasMiddleware
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate(['code' => ['required', 'string', 'max:30', 'unique:loan_products,code'], 'name' => ['required', 'string', 'max:150'], 'description' => ['nullable', 'string', 'max:2000']]);
-        $product = LoanProduct::query()->create($validated + ['is_active' => true]);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'minimum_amount' => ['required', 'numeric', 'gt:0'],
+            'maximum_amount' => ['required', 'numeric', 'gt:minimum_amount'],
+            'minimum_term' => ['required', 'integer', 'min:1'],
+            'maximum_term' => ['required', 'integer', 'gte:minimum_term'],
+            'term_unit' => ['required', 'in:Days,Weeks,Months'],
+            'interest_method' => ['required', 'in:Flat,Reducing Balance'],
+            'interest_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'rate_basis' => ['required', 'in:Annual,Monthly,Whole Term'],
+            'repayment_frequency' => ['required', 'in:Daily,Weekly,Biweekly,Monthly'],
+            'principal_grace_period' => ['required', 'integer', 'min:0'],
+            'interest_grace_period' => ['required', 'integer', 'min:0'],
+            'required_guarantors' => ['required', 'integer', 'min:0', 'max:10'],
+            'requires_collateral' => ['nullable', 'boolean'],
+            'maximum_installment_ratio_percent' => ['required', 'numeric', 'gt:0', 'max:100'],
+            'effective_from' => ['required', 'date'],
+            'assurance_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'processing_fee' => ['required', 'numeric', 'in:15000', 'lt:maximum_amount'],
+        ]);
+        $product = DB::transaction(function () use ($request, $validated): LoanProduct {
+            $lastNumber = LoanProduct::query()->where('code', 'like', 'MY-CASH-%')->lockForUpdate()->get('code')
+                ->map(fn (LoanProduct $product): int => preg_match('/^MY-CASH-(\d+)$/', $product->code, $matches) ? (int) $matches[1] : 0)
+                ->max() ?? 0;
 
-        return redirect()->route('loan-products.show', $product)->with('success', 'Loan product created. Add its first effective version.');
+            $product = LoanProduct::query()->create([
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'code' => 'MY-CASH-'.str_pad((string) ($lastNumber + 1), 3, '0', STR_PAD_LEFT),
+                'is_active' => true,
+            ]);
+            $version = $product->versions()->create([
+                'version' => 1,
+                'minimum_amount' => $validated['minimum_amount'],
+                'maximum_amount' => $validated['maximum_amount'],
+                'minimum_term' => $validated['minimum_term'],
+                'maximum_term' => $validated['maximum_term'],
+                'term_unit' => $validated['term_unit'],
+                'interest_method' => $validated['interest_method'],
+                'interest_rate' => (float) $validated['interest_rate_percent'] / 100,
+                'rate_basis' => $validated['rate_basis'],
+                'repayment_frequency' => $validated['repayment_frequency'],
+                'principal_grace_period' => $validated['principal_grace_period'],
+                'interest_grace_period' => $validated['interest_grace_period'],
+                'required_guarantors' => $validated['required_guarantors'],
+                'requires_collateral' => $request->boolean('requires_collateral'),
+                'maximum_installment_ratio' => (float) $validated['maximum_installment_ratio_percent'] / 100,
+                'assurance_percent' => $validated['assurance_percent'],
+                'effective_from' => $validated['effective_from'],
+                'created_by' => $request->user()->id,
+            ]);
+            $version->fees()->create(['name' => 'Processing fee', 'calculation_method' => 'Fixed', 'value' => 15000, 'collection_point' => 'Installment', 'is_financed' => true]);
+
+            return $product;
+        });
+
+        return redirect()->route('loan-products.index')->with('success', "{$product->name} is ready to use.");
     }
 
     public function show(LoanProduct $loanProduct): View
@@ -88,13 +143,13 @@ class LoanProductController extends Controller implements HasMiddleware
             'minimum_amount' => ['required', 'numeric', 'gt:0'], 'maximum_amount' => ['required', 'numeric', 'gt:minimum_amount'],
             'minimum_term' => ['required', 'integer', 'min:1'], 'maximum_term' => ['required', 'integer', 'gte:minimum_term'],
             'term_unit' => ['required', 'in:Days,Weeks,Months'], 'interest_method' => ['required', 'in:Flat,Reducing Balance'],
-            'interest_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'], 'rate_basis' => ['required', 'in:Annual,Whole Term'],
+            'interest_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'], 'rate_basis' => ['required', 'in:Annual,Monthly,Whole Term'],
             'repayment_frequency' => ['required', 'in:Daily,Weekly,Biweekly,Monthly'], 'principal_grace_period' => ['required', 'integer', 'min:0'],
             'interest_grace_period' => ['required', 'integer', 'min:0'], 'required_guarantors' => ['required', 'integer', 'min:0', 'max:10'],
             'requires_collateral' => ['nullable', 'boolean'], 'maximum_installment_ratio_percent' => ['required', 'numeric', 'gt:0', 'max:100'],
             'effective_from' => ['required', 'date'],
             'assurance_percent' => ['sometimes', 'required', 'numeric', 'decimal:0,4', 'min:0', 'max:100'],
-            'processing_fee' => ['sometimes', 'required', 'numeric', 'decimal:0,2', 'min:0', 'lt:maximum_amount'],
+            'processing_fee' => ['required', 'numeric', 'in:15000', 'lt:maximum_amount'],
         ]);
 
         DB::transaction(function () use ($request, $loanProduct, $validated): void {
@@ -118,9 +173,7 @@ class LoanProductController extends Controller implements HasMiddleware
                 'maximum_installment_ratio' => (float) $validated['maximum_installment_ratio_percent'] / 100,
                 'effective_from' => $effectiveFrom, 'created_by' => $request->user()->id,
             ]);
-            if ((float) ($validated['processing_fee'] ?? 0) > 0) {
-                $version->fees()->create(['name' => 'Processing fee', 'calculation_method' => 'Fixed', 'value' => $validated['processing_fee'], 'collection_point' => 'Disbursement', 'is_financed' => false]);
-            }
+            $version->fees()->create(['name' => 'Processing fee', 'calculation_method' => 'Fixed', 'value' => 15000, 'collection_point' => 'Installment', 'is_financed' => true]);
         });
 
         return back()->with('success', 'A new immutable product version was created.');
@@ -131,6 +184,9 @@ class LoanProductController extends Controller implements HasMiddleware
         abort_if($loanProductVersion->loanApplications()->exists(), 422, 'Create a new product version to change fees used by applications.');
         $validated = $request->validate(['name' => ['required', 'string', 'max:150'], 'calculation_method' => ['required', 'in:Fixed,Percentage'], 'value' => ['required', 'numeric', 'gt:0'], 'collection_point' => ['required', 'in:Disbursement,Installment,Upfront'], 'is_financed' => ['nullable', 'boolean']]);
         $validated['name'] = trim($validated['name']);
+        if (strtolower($validated['name']) === 'processing fee') {
+            $validated = array_merge($validated, ['calculation_method' => 'Fixed', 'value' => 15000, 'collection_point' => 'Installment', 'is_financed' => true]);
+        }
         if ($loanProductVersion->fees()->whereRaw('LOWER(name) = ?', [strtolower($validated['name'])])->exists()) {
             throw ValidationException::withMessages(['name' => 'This fee is already configured. Remove the existing fee before replacing it.']);
         }

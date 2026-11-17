@@ -3,7 +3,25 @@
 @section('content')
     @include('partials.alerts')
     <h1 class="h3">Customer payment approvals</h1>
-    <p>Verify the reference and evidence against the actual money received before approving. Approval posts the payment.</p>
+       <p>Verify the reference and evidence against the actual money received before approving. Approval posts the payment.</p>
+    <form class="card card-body border-0 shadow-sm mb-4" method="GET" action="{{ route('payment-submissions.index') }}" data-live-filter="#submissionResults">
+        <div class="row g-2">
+            <div class="col-md-6"><input class="form-control" type="search" name="search" value="{{ request('search') }}" placeholder="Customer, phone, reference, loan or application number"></div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">All statuses</option>
+                    @foreach (['Pending', 'Approved', 'Rejected'] as $s)<option value="{{ $s }}" @selected(request('status') === $s)>{{ $s }}</option>@endforeach
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select name="method" class="form-select">
+                    <option value="">All methods</option>
+                    @foreach (['Cash', 'Bank', 'Mobile Money'] as $m)<option value="{{ $m }}" @selected(request('method') === $m)>{{ $m }}</option>@endforeach
+                </select>
+            </div>
+        </div>
+    </form>
+    <div id="submissionResults">
     @forelse ($submissions as $submission)
         <div class="card card-body mb-3">
             <h2 class="h5">{{ $submission->customer->first_name }} {{ $submission->customer->last_name }} · {{ $submission->loan?->loan_number ?? $submission->application->application_number }}</h2>
@@ -30,5 +48,7 @@
     @empty
         <p>No submitted payments.</p>
     @endforelse
-    {{ $submissions->links() }}
+        {{ $submissions->links() }}
+    </div>
+    @include('partials.live-filter')
 @endsection
