@@ -42,7 +42,7 @@ class UserController extends Controller implements HasMiddleware
                 });
             })->orderBy('first_name')->paginate(20)->withQueryString();
 
-        return view('users.index', compact('users'));
+        return view('users.index', $this->formOptions() + compact('users'));
     }
 
     /**

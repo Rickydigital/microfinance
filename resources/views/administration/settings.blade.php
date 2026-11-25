@@ -1,18 +1,9 @@
 @extends('layouts.app')
-
 @section('title', 'System settings')
-
 @section('content')
-    @include('partials.alerts')
-    <div class="mb-4"><h1 class="h3 mb-1">System settings</h1><p class="text-muted mb-0">Configuration used by lending, finance, security and notifications.</p></div>
-    <form method="POST" action="{{ route('settings.update') }}">
-        @csrf
-        @method('PUT')
-        <div class="row g-4">
-            @foreach ($settings as $group => $groupSettings)
-                <div class="col-lg-6"><div class="card card-body border-0 shadow-sm h-100"><h2 class="h5 text-capitalize mb-3">{{ str_replace('_', ' ', $group) }}</h2>@foreach ($groupSettings as $setting)<div class="mb-3"><label class="form-label" for="setting_{{ $setting->id }}">{{ str($setting->key)->replace('_', ' ')->title() }}</label><input class="form-control" id="setting_{{ $setting->id }}" name="settings[{{ $setting->id }}]" value="{{ old('settings.'.$setting->id, $setting->value) }}"></div>@endforeach</div></div>
-            @endforeach
-        </div>
-        <div class="mt-4"><button class="btn btn-primary" type="submit">Save settings</button></div>
-    </form>
+@include('administration._experience')
+@include('partials.alerts')
+<div class="admin-shell"><header class="admin-hero d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><div class="small text-uppercase fw-bold opacity-75 mb-2">Administration · Configuration</div><h1 class="h2 mb-1">System settings</h1><p class="mb-0">Review lending, finance, security and notification configuration.</p></div><button class="btn btn-light px-4" data-bs-toggle="modal" data-bs-target="#edit-settings"><i class="mdi mdi-tune-variant me-1"></i>Edit settings</button></header>
+<div class="row g-3">@forelse ($settings as $group => $groupSettings)<div class="col-lg-6"><article class="admin-panel h-100"><div class="admin-toolbar"><div class="d-flex align-items-center gap-2"><i class="mdi mdi-cog-outline fs-4 text-success"></i><div><h2 class="h5 text-capitalize mb-0">{{ str_replace('_', ' ', $group) }}</h2><small class="text-muted">{{ $groupSettings->count() }} configuration values</small></div></div></div><div class="p-3">@foreach ($groupSettings->take(4) as $setting)<div class="d-flex justify-content-between gap-3 py-2 border-bottom"><span class="text-muted">{{ str($setting->key)->replace('_', ' ')->title() }}</span><strong class="text-end">{{ $setting->value }}</strong></div>@endforeach @if ($groupSettings->count() > 4)<div class="small text-muted pt-3">+ {{ $groupSettings->count() - 4 }} more settings</div>@endif</div></article></div>@empty<div class="col-12"><div class="admin-panel p-5 text-center text-muted">No system settings are configured.</div></div>@endforelse</div></div>
+<div class="modal fade admin-modal" id="edit-settings" tabindex="-1" aria-labelledby="edit-settings-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-xl"><form class="modal-content" method="POST" action="{{ route('settings.update') }}">@csrf @method('PUT')<div class="modal-header"><div><h2 class="h4 mb-1" id="edit-settings-title">Edit system settings</h2><p class="small text-muted mb-0">Changes apply institution-wide after saving.</p></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-4">@foreach ($settings as $group => $groupSettings)<div class="col-lg-6"><section class="border rounded-4 p-3"><h3 class="h6 text-capitalize mb-3">{{ str_replace('_', ' ', $group) }}</h3>@foreach ($groupSettings as $setting)<div class="mb-3"><label class="form-label" for="setting_{{ $setting->id }}">{{ str($setting->key)->replace('_', ' ')->title() }}</label><input class="form-control" id="setting_{{ $setting->id }}" name="settings[{{ $setting->id }}]" value="{{ old('settings.'.$setting->id, $setting->value) }}"></div>@endforeach</section></div>@endforeach</div></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary px-4" type="submit">Save settings</button></div></form></div></div>
 @endsection

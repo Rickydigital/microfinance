@@ -29,7 +29,7 @@ class RoleController extends Controller implements HasMiddleware
     {
         $roles = Role::query()->withCount(['users', 'permissions'])->orderBy('name')->get();
 
-        return view('roles.index', compact('roles'));
+        return view('roles.index', ['roles' => $roles, 'permissionGroups' => $this->permissionGroups()]);
     }
 
     public function create(): View

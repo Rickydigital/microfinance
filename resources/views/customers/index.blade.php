@@ -1295,7 +1295,7 @@
         function fillSelect(select, rows, placeholder, selected = '') {
             select.replaceChildren(new Option(placeholder, ''));
             for (const row of rows) select.add(new Option(row.name, String(row.id)));
-            const wanted = String(selected ? ? '');
+            const wanted = String(selected ?? '');
             select.value = wanted && Array.from(select.options).some(o => o.value === wanted) ? wanted : '';
             syncSelect2(select);
         }
@@ -1307,7 +1307,7 @@
                 const level = LEVELS[i];
                 const select = levelSelect(group, level);
                 if (!select) continue;
-                state.controllers.get(level) ? .abort();
+                state.controllers.get(level)?.abort();
                 state.controllers.delete(level);
                 select.dataset.selected = '';
                 fillSelect(select, [], `Select ${LEVELS[i - 1]} first`);
@@ -1326,7 +1326,7 @@
             if (!parent || !select || !parent.value) return false;
 
             const parentValue = parent.value;
-            state.controllers.get(level) ? .abort();
+            state.controllers.get(level)?.abort();
             const controller = new AbortController();
             state.controllers.set(level, controller);
 
@@ -1345,7 +1345,7 @@
                 , });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const payload = await response.json();
-                const rows = Array.isArray(payload) ? payload : payload ? .data;
+                const rows = Array.isArray(payload) ? payload : payload?.data;
                 if (!Array.isArray(rows)) throw new Error(`Unexpected ${level} API response`);
 
                 // Stale response? Newer selection happened meanwhile -> discard.
@@ -1383,7 +1383,7 @@
         // First-time setup of a modal: restores saved values (Edit / old() input).
         // Idempotent: safe to call from hashchange, load and shown.bs.modal.
         function initLocations(scope) {
-            const group = scope ? .querySelector ? .('.customer-location');
+            const group = scope?.querySelector?.('.customer-location');
             if (!group) return;
             const state = stateOf(group);
             if (state.initialized) return;
@@ -1391,7 +1391,7 @@
             if (!region) return;
             state.initialized = true;
 
-            const saved = Object.fromEntries(LEVELS.map(l => [l, levelSelect(group, l) ? .dataset.selected || '']));
+            const saved = Object.fromEntries(LEVELS.map(l => [l, levelSelect(group, l)?.dataset.selected || '']));
             const epoch = ++state.epoch;
             syncSelect2(region); // Select2 text must match native value
             clearFrom(group, 1); // dependents start empty / disabled
@@ -1399,7 +1399,7 @@
             (async () => {
                 for (let i = 1; i < LEVELS.length; i++) {
                     const parent = levelSelect(group, LEVELS[i - 1]);
-                    if (!parent ? .value) break;
+                    if (!parent?.value) break;
                     const ok = await loadLevel(group, LEVELS[i], saved[LEVELS[i]], epoch);
                     if (!ok || state.epoch !== epoch) break;
                 }
@@ -1425,7 +1425,7 @@
                     });
             } else {
                 document.addEventListener('change', event => {
-                    const select = event.target.closest ? .('.customer-location select[data-location]');
+                    const select = event.target.closest?.('.customer-location select[data-location]');
                     if (select) onLocationChange(select);
                 });
             }
@@ -1451,7 +1451,7 @@
         let activeRequest;
 
         async function searchCustomers(url) {
-            activeRequest ? .abort();
+            activeRequest?.abort();
             const controller = new AbortController();
             activeRequest = controller;
             try {
@@ -1493,20 +1493,20 @@
             searchCustomers(url.toString());
         }
 
-        filters ? .addEventListener('submit', event => {
+        filters?.addEventListener('submit', event => {
             event.preventDefault();
             applyFilters();
         });
-        filters ? .querySelector('input[name="search"]') ? .addEventListener('input', () => {
+        filters?.querySelector('input[name="search"]')?.addEventListener('input', () => {
             clearTimeout(pendingSearch);
             pendingSearch = setTimeout(applyFilters, 400);
         });
         // Auto-apply when a dropdown changes (native and Select2).
         // jQuery loads later, so bind again on window load.
         function bindFilterSelects() {
-            filters ? .querySelectorAll('select').forEach(sel => {
+            filters?.querySelectorAll('select').forEach(sel => {
                 sel.addEventListener('change', applyFilters);
-                window.jQuery ? .(sel).off('change.liveFilter').on('change.liveFilter', applyFilters);
+                window.jQuery?.(sel).off('change.liveFilter').on('change.liveFilter', applyFilters);
             });
         }
         bindFilterSelects();
@@ -1527,8 +1527,8 @@
 
             const addKin = event.target.closest('[data-add-kin]');
             if (addKin) {
-                const list = addKin.closest('.modal') ? .querySelector('.customer-kin-list');
-                const row = list ? .querySelector('.customer-kin-row');
+                const list = addKin.closest('.modal')?.querySelector('.customer-kin-list');
+                const row = list?.querySelector('.customer-kin-row');
                 if (!row || list.children.length >= 5) return;
                 const clone = row.cloneNode(true);
                 const index = Date.now();
@@ -1542,8 +1542,8 @@
             const removeKin = event.target.closest('[data-remove-kin]');
             if (removeKin) {
                 const row = removeKin.closest('.customer-kin-row');
-                if (row ? .parentElement ? .children.length > 1) row.remove();
-                else row ? .querySelectorAll('input').forEach(input => input.value = '');
+                if (row?.parentElement?.children.length > 1) row.remove();
+                else row?.querySelectorAll('input').forEach(input => input.value = '');
             }
 
             if (event.target.closest('#addRegistrationDocument')) {
@@ -1577,14 +1577,14 @@
             const income = event.target.closest('[data-income-source-select]');
             if (!income) return;
             const wrapper = income.closest('.customer-income-source');
-            const other = wrapper ? .querySelector('[data-income-source-other]');
-            const value = wrapper ? .querySelector('[data-income-source-value]');
+            const other = wrapper?.querySelector('[data-income-source-other]');
+            const value = wrapper?.querySelector('[data-income-source-value]');
             if (other) other.hidden = income.value !== 'other';
-            if (value) value.value = income.value === 'other' ? (other ? .value || '') : income.value;
+            if (value) value.value = income.value === 'other' ? (other?.value || '') : income.value;
         });
         page.addEventListener('input', event => {
             if (event.target.matches('[data-income-source-other]')) {
-                const value = event.target.closest('.customer-income-source') ? .querySelector('[data-income-source-value]');
+                const value = event.target.closest('.customer-income-source')?.querySelector('[data-income-source-value]');
                 if (value) value.value = event.target.value;
             }
         });
@@ -1593,7 +1593,7 @@
          * CLOSE :target MODALS (backdrop click / Escape)
          * ===================================================================== */
         document.addEventListener('click', event => {
-            if (event.target.matches ? .('.borrowers-ui .modal:target')) {
+            if (event.target.matches?.('.borrowers-ui .modal:target')) {
                 window.location.hash = 'customer-top';
             }
         });

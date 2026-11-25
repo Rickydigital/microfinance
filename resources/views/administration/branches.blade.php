@@ -1,28 +1,12 @@
 @extends('layouts.app')
-
 @section('title', 'Branches')
-
 @section('content')
-    @include('partials.alerts')
-    <div class="row g-4">
-        <div class="col-lg-4">
-            <form class="card card-body border-0 shadow-sm" method="POST" action="{{ route('branches.store') }}">
-                @csrf
-                <h1 class="h5 mb-3">Create branch</h1>
-                <div class="mb-3"><label class="form-label" for="code">Branch code</label><input class="form-control" id="code" name="code" value="{{ old('code') }}" required></div>
-                <div class="mb-3"><label class="form-label" for="name">Name</label><input class="form-control" id="name" name="name" value="{{ old('name') }}" required></div>
-                <div class="mb-3"><label class="form-label" for="phone">Phone</label><input class="form-control" id="phone" name="phone" value="{{ old('phone') }}"></div>
-                <div class="mb-3"><label class="form-label" for="email">Email</label><input class="form-control" id="email" type="email" name="email" value="{{ old('email') }}"></div>
-                <div class="mb-3"><label class="form-label" for="address">Address</label><textarea class="form-control" id="address" name="address" rows="3">{{ old('address') }}</textarea></div>
-                <button class="btn btn-primary" type="submit">Save branch</button>
-            </form>
-        </div>
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white"><h2 class="h5 mb-0">Institution branches</h2></div>
-                <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Branch</th><th>Employees</th><th>Customers</th><th>Loans</th><th>Status</th></tr></thead><tbody>@foreach ($branches as $branch)<tr><td><strong>{{ $branch->name }}</strong><div class="small text-muted">{{ $branch->code }}</div></td><td>{{ $branch->users_count }}</td><td>{{ $branch->customers_count }}</td><td>{{ $branch->loans_count }}</td><td>{{ $branch->is_active ? 'Active' : 'Inactive' }}</td></tr>@endforeach</tbody></table></div>
-                <div class="card-body">{{ $branches->links() }}</div>
-            </div>
-        </div>
-    </div>
+@include('administration._experience')
+@include('partials.alerts')
+<div class="admin-shell">
+<header class="admin-hero d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4"><div><div class="small text-uppercase fw-bold opacity-75 mb-2">Administration · Organisation</div><h1 class="h2 mb-1">Branches</h1><p class="mb-0">Manage service locations, teams and portfolio coverage.</p></div>@can('admin.branch.create')<button class="btn btn-light px-4" data-bs-toggle="modal" data-bs-target="#create-branch"><i class="mdi mdi-plus me-1"></i>New branch</button>@endcan</header>
+<div class="row g-3 mb-4"><div class="col-md-3"><div class="admin-stat"><span>Total branches</span><strong>{{ $branches->total() }}</strong></div></div><div class="col-md-3"><div class="admin-stat"><span>Active on page</span><strong>{{ $branches->getCollection()->where('is_active', true)->count() }}</strong></div></div><div class="col-md-3"><div class="admin-stat"><span>Employees on page</span><strong>{{ number_format($branches->sum('users_count')) }}</strong></div></div><div class="col-md-3"><div class="admin-stat"><span>Customers on page</span><strong>{{ number_format($branches->sum('customers_count')) }}</strong></div></div></div>
+<section class="admin-panel"><div class="admin-toolbar d-flex justify-content-between align-items-center"><div><strong>Branch directory</strong><div class="small text-muted">Operational footprint and assigned records</div></div><span class="badge rounded-pill text-bg-light">{{ $branches->total() }} records</span></div><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Branch</th><th>Employees</th><th>Customers</th><th>Loans</th><th>Status</th></tr></thead><tbody>@forelse ($branches as $branch)<tr><td><strong>{{ $branch->name }}</strong><div class="small text-muted">{{ $branch->code }}</div></td><td>{{ number_format($branch->users_count) }}</td><td>{{ number_format($branch->customers_count) }}</td><td>{{ number_format($branch->loans_count) }}</td><td><span class="badge rounded-pill {{ $branch->is_active ? 'text-bg-success' : 'text-bg-secondary' }}">{{ $branch->is_active ? 'Active' : 'Inactive' }}</span></td></tr>@empty<tr><td colspan="5" class="text-center text-muted py-5">No branches found.</td></tr>@endforelse</tbody></table></div>@if ($branches->hasPages())<div class="p-3 border-top">{{ $branches->links() }}</div>@endif</section>
+</div>
+<div class="modal fade admin-modal" id="create-branch" tabindex="-1" aria-labelledby="create-branch-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-lg"><form class="modal-content" method="POST" action="{{ route('branches.store') }}">@csrf<div class="modal-header"><div><h2 class="h4 mb-1" id="create-branch-title">Create branch</h2><p class="text-muted small mb-0">Add an operational location to your institution.</p></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3"><div class="col-md-4"><label class="form-label">Branch code</label><input class="form-control" name="code" value="{{ old('code') }}" required></div><div class="col-md-8"><label class="form-label">Branch name</label><input class="form-control" name="name" value="{{ old('name') }}" required></div><div class="col-md-6"><label class="form-label">Phone</label><input class="form-control" name="phone" value="{{ old('phone') }}"></div><div class="col-md-6"><label class="form-label">Email</label><input class="form-control" type="email" name="email" value="{{ old('email') }}"></div><div class="col-12"><label class="form-label">Address</label><textarea class="form-control" name="address" rows="3">{{ old('address') }}</textarea></div></div></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary px-4" type="submit">Create branch</button></div></form></div></div>
 @endsection

@@ -3,20 +3,25 @@
 @section('title', 'Employees')
 
 @section('content')
+    @include('administration._experience')
     @include('partials.alerts')
 
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div class="admin-shell">
+    <div class="admin-hero d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
-            <h1 class="h3 mb-1">Employees and access</h1>
-            <p class="text-muted mb-0">Manage employee profiles, branches, departments and roles.</p>
+            <div class="small text-uppercase fw-bold opacity-75 mb-2">Administration · Access control</div>
+            <h1 class="h2 mb-1">Employees and access</h1>
+            <p class="mb-0">Manage employee profiles, branches, departments and roles.</p>
         </div>
-        <a class="btn btn-primary" href="{{ route('users.create') }}">
+        <button class="btn btn-light px-4" data-bs-toggle="modal" data-bs-target="#create-employee">
             <i class="mdi mdi-account-plus-outline me-1"></i>
             Create employee
-        </a>
+        </button>
     </div>
 
-    <div class="card border-0 shadow-sm">
+    <div class="row g-3 mb-4"><div class="col-md-4"><div class="admin-stat"><span>Total employees</span><strong>{{ $users->total() }}</strong></div></div><div class="col-md-4"><div class="admin-stat"><span>Active on page</span><strong>{{ $users->getCollection()->where('is_active', true)->count() }}</strong></div></div><div class="col-md-4"><div class="admin-stat"><span>Roles represented</span><strong>{{ $users->getCollection()->flatMap->roles->unique('id')->count() }}</strong></div></div></div>
+
+    <div class="admin-panel">
         <div class="card-body border-bottom">
             <form class="row g-2" method="GET">
                 <div class="col-md-6">
@@ -66,4 +71,7 @@
         </div>
         <div class="card-body">{{ $users->links() }}</div>
     </div>
+    </div>
+
+    <div class="modal fade admin-modal" id="create-employee" tabindex="-1" aria-labelledby="create-employee-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-xl"><form class="modal-content" method="POST" action="{{ route('users.store') }}">@csrf<div class="modal-header"><div><h2 class="h4 mb-1" id="create-employee-title">Create employee</h2><p class="small text-muted mb-0">Identity, workplace assignment and sign-in access.</p></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body">@include('users._form', ['user' => null])</div></form></div></div>
 @endsection

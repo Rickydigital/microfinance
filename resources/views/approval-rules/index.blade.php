@@ -3,21 +3,24 @@
 @section('title', 'Approval rules')
 
 @section('content')
+    @include('administration._experience')
     @include('partials.alerts')
 
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div class="admin-shell">
+    <div class="admin-hero d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
-            <h1 class="h3 mb-1">Approval rules</h1>
-            <p class="text-muted mb-0">Configure amount bands and sequential maker-checker authority.</p>
+            <div class="small text-uppercase fw-bold opacity-75 mb-2">Administration · Credit governance</div><h1 class="h2 mb-1">Approval rules</h1>
+            <p class="mb-0">Configure amount bands and sequential maker-checker authority.</p>
         </div>
         @can('admin.configuration.update')
-            <a class="btn btn-primary" href="{{ route('approval-rules.create') }}">
+            <button class="btn btn-light px-4" data-bs-toggle="modal" data-bs-target="#create-approval-rule">
                 <i class="mdi mdi-plus me-1"></i>Create rule
-            </a>
+            </button>
         @endcan
     </div>
 
-    <div class="card border-0 shadow-sm">
+    <div class="row g-3 mb-4"><div class="col-md-4"><div class="admin-stat"><span>Total rules</span><strong>{{ $approvalRules->total() }}</strong></div></div><div class="col-md-4"><div class="admin-stat"><span>Active on page</span><strong>{{ $approvalRules->getCollection()->where('is_active', true)->count() }}</strong></div></div><div class="col-md-4"><div class="admin-stat"><span>Approval roles</span><strong>{{ $approvalRules->getCollection()->pluck('role_name')->unique()->count() }}</strong></div></div></div>
+    <div class="admin-panel">
         <div class="card-body border-bottom">
             <form class="row g-2 align-items-end" method="GET">
                 <div class="col-sm-4">
@@ -60,4 +63,7 @@
             <div class="card-footer">{{ $approvalRules->links() }}</div>
         @endif
     </div>
+    </div>
+
+    <div class="modal fade admin-modal" id="create-approval-rule" tabindex="-1" aria-labelledby="create-approval-rule-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-xl"><form class="modal-content" method="POST" action="{{ route('approval-rules.store') }}">@csrf<div class="modal-header"><div><h2 class="h4 mb-1" id="create-approval-rule-title">Create approval rule</h2><p class="small text-muted mb-0">Define scope, amount band and required authority.</p></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body">@include('approval-rules._form', ['approvalRule' => null])</div></form></div></div>
 @endsection

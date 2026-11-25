@@ -39,7 +39,7 @@ class ApprovalRuleController extends Controller implements HasMiddleware
             ->paginate(25)
             ->withQueryString();
 
-        return view('approval-rules.index', compact('approvalRules'));
+        return view('approval-rules.index', $this->formOptions() + compact('approvalRules'));
     }
 
     /**

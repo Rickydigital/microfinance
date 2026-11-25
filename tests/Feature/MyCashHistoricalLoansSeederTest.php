@@ -31,9 +31,10 @@ it('seeds the historical workbook products customers and applications idempotent
     expect(LoanProduct::query()->where('code', 'like', 'MYCASH-%')->count())->toBe(3)
         ->and(LoanProduct::query()->whereIn('name', ['Mkopo Mdogo', 'Mkopo wa Biashara', 'Mkopo wa Dharura'])->count())->toBe(3)
         ->and((float) LoanProduct::query()->where('name', 'Mkopo Mdogo')->firstOrFail()->latestVersion->interest_rate)->toBe(0.03)
-        ->and(LoanProductVersion::query()->whereHas('product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('assurance_percent', 0)->count())->toBe(3)
-        ->and(ProductFee::query()->whereHas('productVersion.product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('calculation_method', 'Fixed')->where('value', 15000)->count())->toBe(3)
-        ->and(ProductFee::query()->whereHas('productVersion.product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('collection_point', 'Installment')->where('is_financed', true)->count())->toBe(3)
+        ->and(LoanProductVersion::query()->whereHas('product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('assurance_percent', 0)->count())->toBe(4)
+        ->and(LoanProductVersion::query()->whereHas('product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('interest_method', 'Reducing Balance')->count())->toBe(4)
+        ->and(ProductFee::query()->whereHas('productVersion.product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('calculation_method', 'Fixed')->where('value', 15000)->count())->toBe(4)
+        ->and(ProductFee::query()->whereHas('productVersion.product', fn ($query) => $query->where('code', 'like', 'MYCASH-%'))->where('collection_point', 'Installment')->where('is_financed', true)->count())->toBe(4)
         ->and(Customer::query()->where('customer_number', 'like', 'MYC-CUS-%')->count())->toBeGreaterThan(20)
         ->and(LoanApplication::query()->where('application_number', 'like', 'MYC-2026-%')->count())->toBe(41)
         ->and(LoanApplication::query()->where('status', LoanApplicationStatus::ConvertedToLoan)->count())->toBe(41)
@@ -41,7 +42,7 @@ it('seeds the historical workbook products customers and applications idempotent
         ->and(Loan::query()->where('loan_number', 'like', 'MYC-LN-2026-%')->count())->toBe(41)
         ->and(LoanDisbursement::query()->where('disbursement_number', 'like', 'MYC-DSB-2026-%')->where('status', 'Disbursed')->count())->toBe(41)
         ->and(Loan::query()->where('status', 'Settled')->where('outstanding_principal', 0)->count())->toBe(24)
-        ->and(Repayment::query()->where('receipt_number', 'like', 'MYC-RCP-2026-%')->where('status', 'Posted')->count())->toBe(24)
+        ->and(Repayment::query()->where('receipt_number', 'like', 'MYC-RCP-%')->where('status', 'Posted')->count())->toBe(116)
         ->and(LoanInstallment::query()->where('status', 'Paid')->count())->toBeGreaterThan(20);
 });
 
@@ -58,6 +59,21 @@ it('preserves representative workbook values', function (): void {
         ->and((float) $finalLoan->requested_amount)->toBe(2200000.0)
         ->and($finalLoan->customer->first_name)->toBe('Rosemary')
         ->and((float) $finalLoan->productVersion->interest_rate)->toBe(0.1);
+
+    expect((float) LoanApplication::query()->where('application_number', 'MYC-2026-0005')->firstOrFail()->productVersion->interest_rate)->toBe(0.035);
+
+    $kondoLoan = $firstLoan->loan;
+    $kondoRepayments = $kondoLoan->repayments()->orderBy('paid_at')->get();
+    $kondoInstallments = $kondoLoan->installments()->orderBy('installment_number')->get();
+    $kondoDisbursement = $kondoLoan->disbursement;
+
+    expect($kondoRepayments)->toHaveCount(2)
+        ->and($kondoRepayments->pluck('amount')->map(fn ($amount): float => (float) $amount)->all())->toBe([296000.0, 1483000.0])
+        ->and($kondoRepayments->pluck('paid_at')->map->format('Y-m-d')->all())->toBe(['2026-05-08', '2026-06-08'])
+        ->and((float) $kondoRepayments->sum('amount'))->toBe(1779000.0)
+        ->and((float) $kondoInstallments->first()->interest_due)->toBeGreaterThan((float) $kondoInstallments->get(1)->interest_due)
+        ->and((float) $kondoDisbursement->deducted_fees)->toBe(0.0)
+        ->and((float) $kondoDisbursement->net_amount)->toBe(1500000.0);
 });
 
 it('uses the published Bootstrap 5 pagination view globally', function (): void {
