@@ -244,8 +244,7 @@ class CustomerController extends Controller implements HasMiddleware
             $district = District::where('region_id', $region->id)->findOrFail($a['district_id']);
             $ward = Ward::where('district_id', $district->id)->findOrFail($a['ward_id']);
             $street = Street::where('ward_id', $ward->id)->findOrFail($a['street_id']);
-            $customer->addresses()->update(['is_primary' => false]);
-            $customer->addresses()->create([
+            $addressAttributes = [
                 'type' => 'Residential',
                 'region_id' => $region->id,
                 'district_id' => $district->id,
@@ -257,11 +256,30 @@ class CustomerController extends Controller implements HasMiddleware
                 'street' => $street->name,
                 'description' => $a['description'] ?? null,
                 'is_primary' => true,
-            ]);
+            ];
+            $primaryAddress = $customer->addresses()->where('is_primary', true)->latest('id')->first();
+            $customer->addresses()->when($primaryAddress, fn ($query) => $query->whereKeyNot($primaryAddress->id))->update(['is_primary' => false]);
+
+            if ($primaryAddress) {
+                $primaryAddress->update($addressAttributes + ['verified_by' => null, 'verified_at' => null]);
+            } else {
+                $customer->addresses()->create($addressAttributes);
+            }
         }
-        if ($request->filled('economic.income_source')) {
-            $customer->economicProfiles()->whereNull('effective_to')->update(['effective_to' => today()->subDay()]);
-            $customer->economicProfiles()->create(array_merge(['monthly_income' => 0, 'monthly_expenses' => 0, 'existing_debt_payment' => 0], array_filter($request->input('economic'), fn ($v) => $v !== null && $v !== ''), ['effective_from' => today()]));
+
+        $economicAttributes = collect($request->input('economic', []))
+            ->only(['occupation', 'employer_or_business', 'income_source', 'monthly_income', 'monthly_expenses', 'existing_debt_payment', 'business_turnover'])
+            ->all();
+
+        if (collect($economicAttributes)->contains(fn ($value): bool => $value !== null && $value !== '')) {
+            $currentProfile = $customer->economicProfiles()->whereNull('effective_to')->latest('id')->first();
+            $defaults = ['monthly_income' => 0, 'monthly_expenses' => 0, 'existing_debt_payment' => 0, 'business_turnover' => 0];
+
+            if ($currentProfile) {
+                $currentProfile->update($economicAttributes);
+            } else {
+                $customer->economicProfiles()->create($defaults + $economicAttributes + ['effective_from' => today()]);
+            }
         }
         foreach ($request->input('kin', []) as $kin) {
             if (! empty($kin['full_name'])) {

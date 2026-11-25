@@ -1,7 +1,11 @@
 <?php
 
 use App\Models\Customer;
+use App\Models\District;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\User;
+use App\Models\Ward;
 use Database\Seeders\CustomerTypeSeeder;
 use Database\Seeders\IdentificationTypeSeeder;
 use Database\Seeders\RolePermissionSeeder;
@@ -85,6 +89,98 @@ test('editing a customer automatically verifies the submitted identification and
         ->and($identification->verified_at)->not->toBeNull()
         ->and($economicProfile->occupation)->toBe('Shop owner')
         ->and($economicProfile->income_source)->toBe('General shop');
+});
+
+test('editing updates the current economic profile kyc risk and primary address', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+    $this->seed(CustomerTypeSeeder::class);
+    $this->seed(IdentificationTypeSeeder::class);
+
+    $user = User::factory()->create();
+    $user->assignRole('Customer KYC Officer');
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'type' => 'Individual']);
+    $economicProfile = $customer->economicProfiles()->create([
+        'occupation' => 'Trader',
+        'income_source' => 'Custom wholesale business',
+        'monthly_income' => 1000000,
+        'monthly_expenses' => 300000,
+        'existing_debt_payment' => 0,
+        'effective_from' => today()->subMonth(),
+    ]);
+    $oldRegion = Region::factory()->create();
+    $oldDistrict = District::factory()->create(['region_id' => $oldRegion->id]);
+    $oldWard = Ward::factory()->create(['district_id' => $oldDistrict->id]);
+    $oldStreet = Street::factory()->create(['ward_id' => $oldWard->id]);
+    $primaryAddress = $customer->addresses()->create([
+        'type' => 'Residential',
+        'region_id' => $oldRegion->id,
+        'district_id' => $oldDistrict->id,
+        'ward_id' => $oldWard->id,
+        'street_id' => $oldStreet->id,
+        'region' => $oldRegion->name,
+        'district' => $oldDistrict->name,
+        'ward' => $oldWard->name,
+        'street' => $oldStreet->name,
+        'is_primary' => true,
+        'verified_by' => $user->id,
+        'verified_at' => now(),
+    ]);
+    $region = Region::factory()->create();
+    $district = District::factory()->create(['region_id' => $region->id]);
+    $ward = Ward::factory()->create(['district_id' => $district->id]);
+    $street = Street::factory()->create(['ward_id' => $ward->id]);
+
+    $this->actingAs($user)->put(route('customers.update', $customer), [
+        'type' => 'Individual',
+        'first_name' => $customer->first_name,
+        'last_name' => $customer->last_name,
+        'phone' => $customer->phone,
+        'kyc_risk_rating' => 'High',
+        'address' => [
+            'region_id' => $region->id,
+            'district_id' => $district->id,
+            'ward_id' => $ward->id,
+            'street_id' => $street->id,
+            'description' => 'Near the market',
+        ],
+        'economic' => [
+            'occupation' => 'Shop owner',
+            'income_source' => 'Custom wholesale business',
+            'monthly_income' => 1750000,
+            'monthly_expenses' => 450000,
+            'existing_debt_payment' => 50000,
+        ],
+    ])->assertRedirect(route('customers.show', $customer))->assertSessionHasNoErrors();
+
+    expect($customer->fresh()->kyc_risk_rating)->toBe('High')
+        ->and($customer->economicProfiles()->whereNull('effective_to')->count())->toBe(1)
+        ->and($economicProfile->fresh()->occupation)->toBe('Shop owner')
+        ->and((float) $economicProfile->fresh()->monthly_income)->toBe(1750000.0)
+        ->and($customer->addresses()->where('is_primary', true)->count())->toBe(1)
+        ->and($primaryAddress->fresh()->region_id)->toBe($region->id)
+        ->and($primaryAddress->fresh()->description)->toBe('Near the market')
+        ->and($primaryAddress->fresh()->verified_at)->toBeNull();
+});
+
+test('an invalid customer update preserves the edit modal target', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+    $this->seed(CustomerTypeSeeder::class);
+    $user = User::factory()->create();
+    $user->assignRole('Customer KYC Officer');
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'type' => 'Individual']);
+
+    $this->actingAs($user)
+        ->from(route('customers.index'))
+        ->put(route('customers.update', $customer), [
+            '_modal_target' => 'edit-'.$customer->id,
+            'type' => 'Individual',
+            'first_name' => $customer->first_name,
+            'last_name' => '',
+            'phone' => $customer->phone,
+        ])
+        ->assertRedirect(route('customers.index'))
+        ->assertSessionHasErrors('last_name')
+        ->assertSessionHasInput('_modal_target', 'edit-'.$customer->id);
 });
 
 test('a kyc officer sees a verify action for each pending customer document', function () {

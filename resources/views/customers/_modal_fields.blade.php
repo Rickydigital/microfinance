@@ -86,7 +86,7 @@
 
 <section class="customer-form-section mt-4">
     <div class="section-label mb-3">Identification details</div>
-    <p class="small text-muted mb-3">Identification details are collected here. KYC approval is a separate review process.</p>
+    <p class="small text-muted mb-3">Update identity and risk information here. Final KYC approval remains a separate controlled review.</p>
     <div class="row g-3">
         <div class="col-md-6">
             <label class="form-label">ID type</label>
@@ -101,11 +101,21 @@
             <label class="form-label">ID number</label>
             <input name="identification_number" class="form-control" value="{{ old('identification_number', $customer?->identification_number) }}">
         </div>
+        <div class="col-md-6">
+            <label class="form-label">KYC risk rating</label>
+            <select name="kyc_risk_rating" class="form-select">
+                <option value="">Not assessed</option>
+                @foreach (['Low', 'Medium', 'High'] as $rating)
+                    <option value="{{ $rating }}" @selected(old('kyc_risk_rating', $customer?->kyc_risk_rating) === $rating)>{{ $rating }}</option>
+                @endforeach
+            </select>
+        </div>
     </div>
 </section>
 
 <section class="customer-form-section mt-4">
     <div class="section-label mb-3">Residential location</div>
+    <p class="small text-muted mb-3">This location becomes the customer's primary address. Changing it requires address verification again.</p>
     <div class="row g-3 customer-location">
         @foreach ($locationFields as $key => $field)
             @php
@@ -181,7 +191,7 @@
                     <input
                         type="hidden"
                         name="economic[income_source]"
-                        value="{{ in_array($currentValue, $incomeOptions, true) ? $currentValue : '' }}"
+                        value="{{ $currentValue }}"
                         data-income-source-value
                     >
                     <input

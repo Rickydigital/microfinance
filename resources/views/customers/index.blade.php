@@ -1172,10 +1172,10 @@
         @can('customer.update')<div class="modal fade" id="edit-{{ $customer->id }}" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-dialog-centered">
                 <div class="modal-content">
-                    <form method="POST" enctype="multipart/form-data" action="{{ route('customers.update',$customer) }}">@csrf @method('PUT')<div class="modal-header">
+                    <form method="POST" enctype="multipart/form-data" action="{{ route('customers.update',$customer) }}">@csrf @method('PUT')<input type="hidden" name="_modal_target" value="edit-{{ $customer->id }}"><div class="modal-header">
                             <h5 class="modal-title">Edit borrower · {{ $customer->customer_number }}</h5><a href="#customer-top" class="btn-close" aria-label="Close"></a>
                         </div>
-                        <div class="modal-body">@include('customers._modal_fields',['editingCustomer'=>$customer])</div>
+                        <div class="modal-body">@if($errors->any() && old('_modal_target') === 'edit-'.$customer->id)<div class="alert alert-danger"><strong>Could not save the customer.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif @include('customers._modal_fields',['editingCustomer'=>$customer])</div>
                         <div class="modal-footer"><a href="#customer-top" type="button" class="btn btn-light">Cancel</a><button class="btn btn-accent">Save changes</button>
                         </div>
                     </form>
@@ -1187,10 +1187,10 @@
     @can('customer.create')<div class="modal fade" id="registerCustomer" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered">
             <div class="modal-content">
-                <form method="POST" enctype="multipart/form-data" action="{{ route('customers.store') }}">@csrf<div class="modal-header">
+                <form method="POST" enctype="multipart/form-data" action="{{ route('customers.store') }}">@csrf<input type="hidden" name="_modal_target" value="registerCustomer"><div class="modal-header">
                         <h5 class="modal-title">Register new borrower</h5><a href="#customer-top" class="btn-close" aria-label="Close"></a>
                     </div>
-                    <div class="modal-body">@include('customers._modal_fields',['editingCustomer'=>null])<div class="section-label mt-4 mb-3">KYC evidence — optional at registration</div>
+                    <div class="modal-body">@if($errors->any() && old('_modal_target') === 'registerCustomer')<div class="alert alert-danger"><strong>Could not register the customer.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif @include('customers._modal_fields',['editingCustomer'=>null])<div class="section-label mt-4 mb-3">KYC evidence — optional at registration</div>
                         <div class="alert alert-light border small">Attach up to five documents (PDF/JPG/PNG, maximum 10
                             MB each). Files are stored privately and remain <strong>unverified</strong> until an
                             authorized officer reviews them.</div>
@@ -1250,6 +1250,10 @@
         const page = document.querySelector('.borrowers-ui');
         if (!page || page.dataset.customerScriptBound === '1') return;
         page.dataset.customerScriptBound = '1';
+        const failedModalTarget = @json(old('_modal_target'));
+        if (/^(registerCustomer|edit-\d+)$/.test(failedModalTarget || '')) {
+            window.location.hash = failedModalTarget;
+        }
 
         /* =====================================================================
          * LOCATION CASCADE  (Region -> District -> Ward -> Street)

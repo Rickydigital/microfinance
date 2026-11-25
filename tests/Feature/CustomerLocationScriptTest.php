@@ -10,5 +10,6 @@ it('keeps the customer modal location cascade valid and connected to its endpoin
         ->toContain("district: @json(route('locations.districts'))")
         ->toContain("ward: @json(route('locations.wards'))")
         ->toContain("street: @json(route('locations.streets'))")
+        ->toContain("const failedModalTarget = @json(old('_modal_target'))")
         ->toContain(".on('change.customerLocation', '.customer-location select[data-location]'");
 });
