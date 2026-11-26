@@ -25,6 +25,25 @@ test('quotation exposes numeric interest workings and distributes configured fee
         ->and(collect($quote['projected_schedule'])->sum('fees'))->toBe(10000.0);
 });
 
+test('quotation reports the exact failed policy control', function (): void {
+    $version = LoanProductVersion::factory()->create([
+        'minimum_term' => 1,
+        'maximum_term' => 10,
+        'maximum_installment_ratio' => 0.50,
+    ]);
+
+    $affordabilityFailure = app(LoanQuotationService::class)->quote($version->load('fees'), 3000000, 6, 1000000, 100000, 0);
+
+    expect($affordabilityFailure['affordable'])->toBeFalse()
+        ->and($affordabilityFailure['policy_failures'])->toHaveCount(1)
+        ->and($affordabilityFailure['policy_failures'][0])->toStartWith('Projected installment')
+        ->and($affordabilityFailure['policy_failures'][0])->not->toContain('Requested term');
+
+    $termFailure = app(LoanQuotationService::class)->quote($version, 3000000, 11, 10000000, 0, 0);
+
+    expect($termFailure['policy_failures'])->toContain('Requested term 11 Months is outside the product range of 1 to 10 Months.');
+});
+
 test('repayment selection hides fully paid loans and can search unpaid loans', function (): void {
     $this->seed(RolePermissionSeeder::class);
     $user = User::factory()->create();

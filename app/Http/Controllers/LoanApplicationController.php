@@ -240,7 +240,7 @@ class LoanApplicationController extends Controller implements HasMiddleware
         }
 
         if (! $quote['affordable']) {
-            return back()->withErrors(['application' => 'The requested amount exceeds affordability policy. Reduce it to the recommended amount or update the verified economic profile.']);
+            return back()->withErrors(['application' => implode(' ', $quote['policy_failures'])]);
         }
 
         $acceptedGuarantors = $loanApplication->guarantors()->where('status', 'Accepted')->whereHas('guarantor', fn ($query) => $query->where('status', 'Verified'))->count();

@@ -64,12 +64,25 @@ test('a permitted officer can update a draft application', function (): void {
 });
 
 test('kyc readiness includes configured mandatory documents', function (): void {
-    $customer = Customer::factory()->create(['status' => CustomerStatus::PendingVerification]);
+    $customer = Customer::factory()->create(['status' => CustomerStatus::PendingVerification, 'verified_at' => null]);
     DocumentType::factory()->create(['code' => 'INCOME_PROOF', 'name' => 'Income proof', 'is_active' => true, 'is_required_for_kyc' => true, 'customer_type_code' => null]);
 
     $result = app(CustomerKycReadinessService::class)->evaluate($customer);
 
     expect($result['ready'])->toBeFalse()->and(collect($result['checks'])->pluck('label'))->toContain('Income proof');
+});
+
+test('recorded kyc approval is authoritative for loan readiness', function (): void {
+    $customer = Customer::factory()->create([
+        'status' => CustomerStatus::Active,
+        'verified_at' => now(),
+    ]);
+
+    $result = app(CustomerKycReadinessService::class)->evaluate($customer);
+
+    expect($result['approved'])->toBeTrue()
+        ->and($result['ready'])->toBeTrue()
+        ->and($result['completed'])->toBeLessThan($result['total']);
 });
 
 test('loan application view renders the complete credit dossier', function (): void {
@@ -81,7 +94,14 @@ test('loan application view renders the complete credit dossier', function (): v
     $this->actingAs($officer)->get(route('loan-applications.show', $application))
         ->assertOk()
         ->assertSee('Complete credit dossier')
+        ->assertSee('Available actions')
+        ->assertSee('Assess application')
+        ->assertSee('More details')
+        ->assertSee('Requested principal')
+        ->assertSee('Decision snapshot')
+        ->assertSee('Affordability usage')
         ->assertSee('Product &amp; quotation', false)
+        ->assertSee('loan-panel-modal')
         ->assertSee('Affordability calculation')
         ->assertSee('Projected repayment schedule')
         ->assertSee('Application timeline');

@@ -15,37 +15,87 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <strong>Current stage</strong>
-            <span class="badge bg-primary ms-2">{{ $loanApplication->status->value }}</span>
-        </div>
-        <a href="#audit" class="btn btn-sm btn-outline-secondary" data-toggle="tab"
-           onclick="document.querySelector('[href=\"#audit\"]')?.click()">View full timeline</a>
+    <div class="loan-flow mb-4">
+        @php($flowStages = ['Draft', 'Submitted', 'Under Assessment', 'Pending Approval', 'Approved', 'Converted to Loan'])
+        @php($currentFlowIndex = match ($loanApplication->status) {
+            \App\LoanApplicationStatus::Draft => 0,
+            \App\LoanApplicationStatus::Submitted => 1,
+            \App\LoanApplicationStatus::UnderAssessment, \App\LoanApplicationStatus::Recommended => 2,
+            \App\LoanApplicationStatus::PendingApproval => 3,
+            \App\LoanApplicationStatus::Approved, \App\LoanApplicationStatus::ReadyForDisbursement => 4,
+            \App\LoanApplicationStatus::ConvertedToLoan => 5,
+            default => 0,
+        })
+        @foreach ($flowStages as $flowIndex => $flowStage)
+            <div class="loan-flow-step {{ $flowIndex < $currentFlowIndex ? 'is-complete' : ($flowIndex === $currentFlowIndex ? 'is-current' : '') }}">
+                <span>{{ $flowIndex < $currentFlowIndex ? '✓' : $flowIndex + 1 }}</span><small>{{ $flowStage }}</small>
+            </div>
+        @endforeach
     </div>
 
     @if ($dossier['warnings'])
         <div class="alert alert-warning"><strong>Controls requiring attention</strong><ul class="mb-0 mt-2">@foreach ($dossier['warnings'] as $warning)<li>{{ $warning }}</li>@endforeach</ul></div>
     @endif
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-3"><div class="card card-body border-0 shadow-sm h-100"><small class="text-muted">Requested principal</small><strong class="h5 mt-2">{{ number_format($quote['principal'], 2) }}</strong></div></div>
-        <div class="col-md-3"><div class="card card-body border-0 shadow-sm h-100"><small class="text-muted">Estimated net proceeds</small><strong class="h5 mt-2">{{ number_format($quote['estimated_net_disbursement'], 2) }}</strong></div></div>
-        <div class="col-md-3"><div class="card card-body border-0 shadow-sm h-100"><small class="text-muted">Maximum installment</small><strong class="h5 mt-2">{{ number_format($quote['installment'], 2) }}</strong></div></div>
-        <div class="col-md-3"><div class="card card-body border-0 shadow-sm h-100"><small class="text-muted">Total customer cost</small><strong class="h5 mt-2">{{ number_format($quote['total_customer_cost'], 2) }}</strong></div></div>
+    <div class="loan-preview-metrics mb-4">
+        <article><i class="mdi mdi-cash-multiple"></i><div><small>Requested principal</small><strong>TZS {{ number_format($quote['principal'], 2) }}</strong><span>{{ $loanApplication->requested_term }} {{ strtolower($loanApplication->productVersion->term_unit) }}</span></div></article>
+        <article><i class="mdi mdi-bank-transfer-out"></i><div><small>Customer receives</small><strong>TZS {{ number_format($quote['estimated_net_disbursement'], 2) }}</strong><span>After payout deductions</span></div></article>
+        <article class="{{ $quote['affordable'] ? 'is-positive' : 'is-warning' }}"><i class="mdi mdi-calendar-cash"></i><div><small>Projected installment</small><strong>TZS {{ number_format($quote['installment'], 2) }}</strong><span>Limit: TZS {{ number_format($quote['maximum_installment'], 2) }}</span></div></article>
+        <article><i class="mdi mdi-receipt-text-check-outline"></i><div><small>Total customer cost</small><strong>TZS {{ number_format($quote['total_customer_cost'], 2) }}</strong><span>Interest and fees included</span></div></article>
     </div>
 
-    <ul class="nav nav-tabs mb-4 flex-wrap" role="tablist">
-        @foreach (['overview' => 'Overview', 'customer' => 'Customer & KYC', 'quotation' => 'Product & quotation', 'affordability' => 'Affordability', 'risk' => 'Assessment & risk', 'security' => 'Security', 'approvals' => 'Approvals', 'conditions' => 'Conditions', 'schedule' => 'Schedule', 'documents' => 'Documents', 'disbursement' => 'Disbursement', 'audit' => 'Timeline'] as $id => $label)
-            <li class="nav-item"><a class="nav-link {{ $loop->first ? 'active' : '' }}" data-toggle="tab" href="#{{ $id }}" role="tab">{{ $label }}</a></li>
-        @endforeach
-    </ul>
+    <div class="loan-actions card border-0 shadow-sm mb-4">
+        <div class="card-body d-flex flex-wrap align-items-center gap-2">
+            <strong class="me-auto">Available actions</strong>
+            @if ($loanApplication->status === \App\LoanApplicationStatus::Draft)
+                @can('loan.application.submit')
+                    <form method="POST" action="{{ route('loan-applications.submit', $loanApplication) }}">@csrf<button class="btn btn-primary" @disabled(! $kyc['ready'] || ! $quote['affordable'])><i class="mdi mdi-send-check-outline"></i> Submit for assessment</button></form>
+                @endcan
+            @elseif (in_array($loanApplication->status, [\App\LoanApplicationStatus::Submitted, \App\LoanApplicationStatus::UnderAssessment], true))
+                @can('loan.assessment.create')<button class="btn btn-primary" type="button" data-loan-panel="risk" data-panel-title="Credit assessment"><i class="mdi mdi-clipboard-check-outline"></i> Assess application</button>@endcan
+            @elseif ($loanApplication->status === \App\LoanApplicationStatus::PendingApproval && $pendingApproval)
+                @can('loan.approval.decide')<button class="btn btn-primary" type="button" data-loan-panel="approvals" data-panel-title="Approval decision"><i class="mdi mdi-shield-check-outline"></i> Review and decide</button>@endcan
+            @elseif ($loanApplication->status === \App\LoanApplicationStatus::Approved && ! $loanApplication->disbursement)
+                @can('loan.disbursement.create')<button class="btn btn-primary" type="button" data-loan-panel="prepare-disbursement" data-panel-title="Prepare disbursement"><i class="mdi mdi-cash-fast"></i> Send to disbursement</button>@endcan
+            @elseif ($loanApplication->loan)
+                <a class="btn btn-primary" href="{{ route('loans.show', $loanApplication->loan) }}"><i class="mdi mdi-open-in-new"></i> Open active loan</a>
+            @endif
+            <div class="dropdown">
+                <button class="btn btn-outline-primary dropdown-toggle" type="button" data-toggle="dropdown"><i class="mdi mdi-dots-horizontal"></i> More details</button>
+                <div class="dropdown-menu dropdown-menu-end">
+                    @foreach (['customer' => 'Customer & KYC', 'quotation' => 'Product & quotation', 'affordability' => 'Affordability', 'risk' => 'Assessment history', 'security' => 'Guarantors & collateral', 'approvals' => 'Approvals & decisions', 'conditions' => 'Conditions', 'schedule' => 'Repayment schedule', 'documents' => 'Documents', 'disbursement' => 'Disbursement record', 'audit' => 'Timeline', 'calculation-details' => 'Calculation details'] as $panelId => $panelLabel)
+                        <button class="dropdown-item" type="button" data-loan-panel="{{ $panelId }}" data-panel-title="{{ $panelLabel }}">{{ $panelLabel }}</button>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="tab-content">
         <section class="tab-pane fade show active" id="overview">
-            <div class="row g-4">
-                <div class="col-lg-8"><div class="card card-body border-0 shadow-sm h-100"><h2 class="h5">Application summary</h2><dl class="row mb-0"><dt class="col-md-4">Product</dt><dd class="col-md-8">{{ $loanApplication->productVersion->product->name }} (version {{ $loanApplication->productVersion->version }})</dd><dt class="col-md-4">Purpose</dt><dd class="col-md-8">{{ $loanApplication->purpose }}</dd><dt class="col-md-4">Requested term</dt><dd class="col-md-8">{{ $loanApplication->requested_term }} {{ strtolower($loanApplication->productVersion->term_unit) }}</dd><dt class="col-md-4">Repayment frequency</dt><dd class="col-md-8">{{ $loanApplication->repayment_frequency }}</dd><dt class="col-md-4">Branch</dt><dd class="col-md-8">{{ $loanApplication->branch->name }}</dd><dt class="col-md-4">Created by</dt><dd class="col-md-8">{{ $loanApplication->creator->full_name }} on {{ $loanApplication->created_at->format('d M Y H:i') }}</dd><dt class="col-md-4">Submitted</dt><dd class="col-md-8">{{ $loanApplication->submitted_at?->format('d M Y H:i') ?? 'Not submitted' }}</dd><dt class="col-md-4">Final approved amount</dt><dd class="col-md-8">{{ $loanApplication->approved_amount ? number_format((float) $loanApplication->approved_amount, 2) : 'Not approved' }}</dd></dl></div></div>
-                <div class="col-lg-4"><div class="card card-body border-0 shadow-sm h-100"><h2 class="h5">Next action</h2>@if ($loanApplication->status === \App\LoanApplicationStatus::Draft)@can('loan.application.submit')<p>Review KYC, policy, quotation, security requirements, and supporting documents.</p><form method="POST" action="{{ route('loan-applications.submit', $loanApplication) }}">@csrf<button class="btn btn-primary" @disabled(! $kyc['ready'] || ! $quote['affordable'])>Submit for assessment</button></form>@endcan @elseif ($loanApplication->status === \App\LoanApplicationStatus::UnderAssessment)<p>Correct the returned application and record a new assessment.</p>@elseif ($loanApplication->status === \App\LoanApplicationStatus::PendingApproval)<p>Awaiting the next configured approval level.</p>@elseif ($loanApplication->status === \App\LoanApplicationStatus::Approved)<p>Complete every pre-disbursement condition before preparing disbursement.</p>@else<p>Current stage: {{ $loanApplication->status->value }}.</p>@endif</div></div>
+            <div class="loan-preview-grid">
+                <article class="loan-preview-card borrower-card">
+                    <header><div class="loan-avatar">{{ strtoupper(substr($loanApplication->customer->first_name, 0, 1).substr($loanApplication->customer->last_name, 0, 1)) }}</div><div><small>Borrower</small><h2>{{ $loanApplication->customer->first_name }} {{ $loanApplication->customer->last_name }}</h2><span>{{ $loanApplication->customer->customer_number }} · {{ $loanApplication->customer->phone }}</span></div><span class="loan-status {{ $kyc['ready'] ? 'is-ok' : 'is-alert' }}">KYC {{ $kyc['ready'] ? 'verified' : 'incomplete' }}</span></header>
+                    <div class="loan-key-values"><div><small>Branch</small><strong>{{ $loanApplication->branch->name }}</strong></div><div><small>Customer type</small><strong>{{ $loanApplication->customer->type }}</strong></div><div><small>Existing exposure</small><strong>TZS {{ number_format($dossier['customer_exposure'], 2) }}</strong></div><div><small>Other applications</small><strong>{{ $dossier['other_open_applications'] }}</strong></div></div>
+                </article>
+                <article class="loan-preview-card decision-card">
+                    <header><div><small>Decision snapshot</small><h2>{{ $loanApplication->status->value }}</h2></div><i class="mdi {{ $quote['affordable'] && $kyc['ready'] ? 'mdi-check-decagram-outline' : 'mdi-alert-decagram-outline' }}"></i></header>
+                    <div class="decision-row"><span>KYC decision</span><strong class="{{ $kyc['ready'] ? 'text-success' : 'text-danger' }}">{{ $kyc['ready'] ? 'Passed' : 'Action needed' }}</strong></div>
+                    <div class="decision-row"><span>Product policy</span><strong class="{{ $quote['affordable'] ? 'text-success' : 'text-danger' }}">{{ $quote['affordable'] ? 'Eligible' : 'Exception' }}</strong></div>
+                    <div class="decision-row"><span>Latest assessment</span><strong>{{ $latestAssessment?->risk_grade ? 'Grade '.$latestAssessment->risk_grade : 'Not assessed' }}</strong></div>
+                    <div class="decision-row"><span>Security requirement</span><strong>{{ $quote['policy']['required_guarantors'] }} guarantor(s){{ $quote['policy']['requires_collateral'] ? ' + collateral' : '' }}</strong></div>
+                </article>
+                <article class="loan-preview-card product-card">
+                    <header><div><small>Selected product</small><h2>{{ $loanApplication->productVersion->product->name }}</h2></div><button type="button" data-loan-panel="quotation" data-panel-title="Product & quotation">View quotation</button></header>
+                    <div class="loan-key-values"><div><small>Interest</small><strong>{{ number_format($quote['annual_interest_rate'] * 100, 2) }}% {{ strtolower($quote['rate_basis']) }}</strong></div><div><small>Method</small><strong>{{ $quote['interest_method'] }}</strong></div><div><small>Repayment</small><strong>{{ $quote['repayment_frequency'] }}</strong></div><div><small>Installments</small><strong>{{ $quote['periods'] }}</strong></div></div>
+                    <div class="loan-purpose"><small>Loan purpose</small><p>{{ $loanApplication->purpose }}</p></div>
+                </article>
+                <article class="loan-preview-card affordability-card">
+                    @php($affordabilityUse = $quote['maximum_installment'] > 0 ? min(100, ($quote['installment'] / $quote['maximum_installment']) * 100) : 100)
+                    <header><div><small>Affordability usage</small><h2>{{ number_format($affordabilityUse, 1) }}%</h2></div><button type="button" data-loan-panel="affordability" data-panel-title="Affordability">See calculation</button></header>
+                    <div class="loan-progress"><span style="width: {{ $affordabilityUse }}%" class="{{ $quote['affordable'] ? 'is-safe' : 'is-over' }}"></span></div>
+                    <div class="decision-row"><span>Disposable income</span><strong>TZS {{ number_format($quote['disposable_income'], 2) }}</strong></div><div class="decision-row"><span>Maximum installment</span><strong>TZS {{ number_format($quote['maximum_installment'], 2) }}</strong></div><div class="decision-row"><span>Recommended principal</span><strong>TZS {{ number_format($quote['recommended_amount'], 2) }}</strong></div>
+                </article>
             </div>
         </section>
 
@@ -53,7 +103,7 @@
             @php($profile = $loanApplication->customer->economicProfiles->whereNull('effective_to')->first())
             @php($address = $loanApplication->customer->addresses->where('is_primary', true)->first())
             <div class="row g-4"><div class="col-lg-6"><div class="card card-body border-0 shadow-sm h-100"><h2 class="h5">Customer profile</h2><dl class="row mb-0"><dt class="col-5">Full name</dt><dd class="col-7">{{ $loanApplication->customer->first_name }} {{ $loanApplication->customer->middle_name }} {{ $loanApplication->customer->last_name }}</dd><dt class="col-5">Customer number</dt><dd class="col-7">{{ $loanApplication->customer->customer_number }}</dd><dt class="col-5">Type</dt><dd class="col-7">{{ $loanApplication->customer->type }}</dd><dt class="col-5">Phone</dt><dd class="col-7">{{ $loanApplication->customer->phone }}</dd><dt class="col-5">Email</dt><dd class="col-7">{{ $loanApplication->customer->email ?: 'Not captured' }}</dd><dt class="col-5">Date of birth</dt><dd class="col-7">{{ $loanApplication->customer->date_of_birth?->format('d M Y') ?? 'Not captured' }}</dd><dt class="col-5">Assigned officer</dt><dd class="col-7">{{ $loanApplication->customer->assignedOfficer?->full_name ?? 'Not assigned' }}</dd><dt class="col-5">Primary address</dt><dd class="col-7">{{ $address ? collect([$address->street, $address->ward, $address->district, $address->region])->filter()->implode(', ') : 'Not captured' }}</dd></dl></div></div>
-            <div class="col-lg-6"><div class="card card-body border-0 shadow-sm h-100"><div class="d-flex justify-content-between"><h2 class="h5">Automatic KYC controls</h2><span class="badge {{ $kyc['ready'] ? 'bg-success' : 'bg-danger' }}">{{ $kyc['completed'] }}/{{ $kyc['total'] }}</span></div>@foreach ($kyc['checks'] as $check)<div class="border-bottom py-2"><strong class="{{ $check['passed'] ? 'text-success' : 'text-danger' }}">{{ $check['passed'] ? '✓' : '✕' }} {{ $check['label'] }}</strong><small class="d-block text-muted">{{ $check['detail'] }}</small></div>@endforeach</div></div></div>
+            <div class="col-lg-6"><div class="card card-body border-0 shadow-sm h-100"><div class="d-flex justify-content-between"><h2 class="h5">Automatic KYC controls</h2><span class="badge {{ $kyc['ready'] ? 'bg-success' : 'bg-danger' }}">{{ $kyc['approved'] ? 'Approved' : $kyc['completed'].'/'.$kyc['total'] }}</span></div>@if ($kyc['approved'] && $kyc['completed'] < $kyc['total'])<div class="alert alert-info py-2">The recorded KYC approval is authoritative. The checks below remain visible for audit follow-up.</div>@endif @foreach ($kyc['checks'] as $check)<div class="border-bottom py-2"><strong class="{{ $check['passed'] ? 'text-success' : 'text-danger' }}">{{ $check['passed'] ? '✓' : '✕' }} {{ $check['label'] }}</strong><small class="d-block text-muted">{{ $check['detail'] }}</small></div>@endforeach</div></div></div>
             <div class="row g-4 mt-1"><div class="col-lg-6"><div class="card card-body border-0 shadow-sm"><h2 class="h5">Identification</h2><div class="table-responsive"><table class="table"><thead><tr><th>Type</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>@forelse ($loanApplication->customer->identifications as $identification)<tr><td>{{ $identification->type }}</td><td>{{ $identification->number }}</td><td>{{ $identification->expires_at?->format('d M Y') ?? 'No expiry' }}</td><td>{{ $identification->verified_at ? 'Verified' : 'Pending' }}</td></tr>@empty<tr><td colspan="4">No identification captured.</td></tr>@endforelse</tbody></table></div></div></div><div class="col-lg-6"><div class="card card-body border-0 shadow-sm"><h2 class="h5">Customer exposure</h2><dl class="row mb-0"><dt class="col-7">Existing outstanding principal</dt><dd class="col-5">{{ number_format($dossier['customer_exposure'], 2) }}</dd><dt class="col-7">Other open applications</dt><dd class="col-5">{{ $dossier['other_open_applications'] }}</dd><dt class="col-7">KYC risk rating</dt><dd class="col-5">{{ $loanApplication->customer->kyc_risk_rating ?: 'Not assessed' }}</dd><dt class="col-7">KYC verified at</dt><dd class="col-5">{{ $loanApplication->customer->verified_at?->format('d M Y') ?? 'Not verified' }}</dd></dl></div></div></div>
         </section>
 
@@ -90,6 +140,96 @@
 
         <section class="tab-pane fade" id="audit"><div class="card card-body border-0 shadow-sm"><h2 class="h5">Application timeline</h2>@foreach ($dossier['timeline'] as $event)<div class="d-flex gap-3 border-bottom py-3"><div class="text-muted" style="min-width: 145px">{{ $event['date']->format('d M Y H:i') }}</div><div><strong>{{ $event['event'] }}</strong><div>{{ $event['detail'] }}</div><small class="text-muted">{{ $event['actor'] ?: 'System' }}</small></div></div>@endforeach<div class="alert alert-info mt-3 mb-0">This timeline is reconstructed from stored workflow records. Field-level before/after application auditing is not yet captured by the current schema.</div></div></section>
     </div>
-    @include('loan-applications._calculation_details')
+    <section class="tab-pane fade" id="calculation-details">@include('loan-applications._calculation_details')</section>
+
+    @if ($loanApplication->status === \App\LoanApplicationStatus::Approved && ! $loanApplication->disbursement)
+        @can('loan.disbursement.create')
+            <section class="tab-pane fade" id="prepare-disbursement">
+                <div class="alert alert-info">The application is approved. Confirm the payout method and destination, then send it for independent authorization.</div>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4"><div class="loan-detail-tile"><small>Approved principal</small><strong>TZS {{ number_format((float) $loanApplication->approved_amount, 2) }}</strong></div></div>
+                    <div class="col-md-4"><div class="loan-detail-tile"><small>Deductions</small><strong>TZS {{ number_format($quote['principal'] - $quote['estimated_net_disbursement'], 2) }}</strong></div></div>
+                    <div class="col-md-4"><div class="loan-detail-tile"><small>Estimated payout</small><strong>TZS {{ number_format($quote['estimated_net_disbursement'], 2) }}</strong></div></div>
+                </div>
+                <form method="POST" action="{{ route('loan-disbursements.store') }}" data-submit-loader>
+                    @csrf
+                    <input type="hidden" name="loan_application_id" value="{{ $loanApplication->id }}">
+                    <div class="row g-3">
+                        <div class="col-md-6"><label class="form-label">Payment method</label><select class="form-select" name="method" required><option value="">Select payout method</option><option>Cash</option><option>Bank</option><option>Mobile Money</option></select></div>
+                        <div class="col-md-6"><label class="form-label">Destination reference</label><input class="form-control" name="destination_reference" placeholder="Bank account, wallet number or cash reference"></div>
+                    </div>
+                    <button class="btn btn-primary mt-4" type="submit"><i class="mdi mdi-cash-fast"></i> Prepare for authorization</button>
+                </form>
+            </section>
+        @endcan
+    @endif
+
+    <div class="loan-panel-modal" id="loan-panel-modal" aria-hidden="true">
+        <button class="loan-panel-backdrop" type="button" aria-label="Close details"></button>
+        <div class="loan-panel-dialog" role="dialog" aria-modal="true" aria-labelledby="loan-panel-title">
+            <header><div><small>Loan application · {{ $loanApplication->application_number }}</small><h2 id="loan-panel-title">Application details</h2></div><button class="loan-panel-close" type="button" aria-label="Close"><i class="mdi mdi-close"></i></button></header>
+            <div class="loan-panel-body"></div>
+        </div>
+    </div>
+
+    <style>
+        .loan-preview-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.loan-preview-metrics article{display:flex;align-items:flex-start;gap:13px;min-height:126px;padding:20px;background:#fff;border:1px solid #e1e8e3;border-radius:18px;box-shadow:0 9px 25px rgba(25,64,52,.06)}.loan-preview-metrics i{display:grid;place-items:center;flex:0 0 44px;height:44px;border-radius:13px;background:#e7f3ef;color:#176b58;font-size:22px}.loan-preview-metrics small,.loan-preview-metrics strong,.loan-preview-metrics span{display:block}.loan-preview-metrics small{color:#78847e;font-weight:700}.loan-preview-metrics strong{margin:7px 0 5px;color:#142e28;font-size:1.08rem}.loan-preview-metrics span{color:#8b9791;font-size:.82rem}.loan-preview-metrics .is-warning{border-color:#efc36e}.loan-preview-metrics .is-warning i{background:#fff2d8;color:#b66a00}.loan-preview-metrics .is-positive i{background:#ddf5e9;color:#098c5b}
+        .loan-preview-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(310px,.8fr);gap:18px}.loan-preview-card{padding:23px;background:#fff;border:1px solid #e0e8e3;border-radius:20px;box-shadow:0 10px 28px rgba(25,64,52,.06)}.loan-preview-card>header{display:flex;align-items:center;gap:13px;margin-bottom:20px}.loan-preview-card header>div:nth-child(2),.loan-preview-card header>div:first-child{min-width:0}.loan-preview-card header small,.loan-purpose small{display:block;color:#87928f;font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.loan-preview-card h2{margin:3px 0;color:#142e28;font-size:1.12rem}.loan-preview-card header span{color:#77847e;font-size:.86rem}.loan-preview-card header button{margin-left:auto;padding:7px 11px;border:1px solid #d5e2dc;border-radius:10px;background:#fff;color:#176b58;font-weight:700}.loan-avatar{display:grid;place-items:center;flex:0 0 52px;width:52px;height:52px;border-radius:16px;background:linear-gradient(145deg,#176b58,#2b947e);color:#fff;font-weight:800}.loan-status{margin-left:auto;padding:7px 10px;border-radius:999px;font-weight:800}.loan-status.is-ok{background:#ddf5e9;color:#08754e}.loan-status.is-alert{background:#fff0dc;color:#a55a00}.loan-key-values{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.loan-key-values>div{padding:13px;background:#f6f9f7;border-radius:13px}.loan-key-values small,.loan-key-values strong{display:block}.loan-key-values small{color:#87928d;font-size:.75rem}.loan-key-values strong{margin-top:4px;color:#263a34;font-size:.9rem}.decision-card>header i{margin-left:auto;color:#176b58;font-size:34px}.decision-row{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid #edf1ef}.decision-row:last-child{border-bottom:0}.decision-row span{color:#7c8883}.decision-row strong{text-align:right;color:#253b34}.loan-purpose{margin-top:16px;padding:14px 16px;border-left:3px solid #176b58;background:#f6f9f7;border-radius:0 12px 12px 0}.loan-purpose p{margin:4px 0 0;color:#40534d}.loan-progress{height:9px;margin-bottom:12px;overflow:hidden;background:#ebefed;border-radius:999px}.loan-progress span{display:block;height:100%;border-radius:inherit}.loan-progress .is-safe{background:#18a56f}.loan-progress .is-over{background:#d98b16}
+        .loan-flow{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:18px;background:#fff;border:1px solid #e1e8e3;border-radius:18px;box-shadow:0 8px 24px rgba(25,64,52,.06)}
+        .loan-flow-step{position:relative;display:flex;align-items:center;gap:9px;color:#87928d;font-weight:700}.loan-flow-step:not(:last-child):after{content:"";position:absolute;left:34px;right:-7px;top:14px;height:2px;background:#e4eae6;z-index:0}.loan-flow-step span{position:relative;z-index:1;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#eef2ef}.loan-flow-step small{position:relative;z-index:1;background:#fff}.loan-flow-step.is-complete,.loan-flow-step.is-current{color:#176b58}.loan-flow-step.is-complete span{background:#dff3eb}.loan-flow-step.is-current span{color:#fff;background:#176b58;box-shadow:0 0 0 5px #e4f2ed}
+        .loan-actions{position:sticky;top:12px;z-index:20;border-radius:16px}.loan-actions .dropdown-menu{min-width:230px;padding:8px;border:1px solid #dce6df;border-radius:14px;box-shadow:0 18px 45px rgba(22,45,38,.16)}.loan-actions .dropdown-item{border-radius:9px;padding:9px 12px}
+        .loan-detail-tile{height:100%;padding:18px;border:1px solid #e0e8e3;border-radius:14px;background:#f8faf9}.loan-detail-tile small,.loan-detail-tile strong{display:block}.loan-detail-tile small{color:#7c8983;margin-bottom:6px}.loan-detail-tile strong{color:#173b32;font-size:1.05rem}
+        .loan-panel-modal{position:fixed;inset:0;z-index:1055;display:none;align-items:center;justify-content:center;padding:24px}.loan-panel-modal.is-open{display:flex}.loan-panel-backdrop{position:absolute;inset:0;border:0;background:rgba(21,35,43,.66)}.loan-panel-dialog{position:relative;display:flex;flex-direction:column;width:min(1100px,96vw);max-height:92vh;overflow:hidden;background:#fff;border:2px solid #1a7863;border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.28)}.loan-panel-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:20px 26px;border-bottom:1px solid #e4e9e6}.loan-panel-dialog>header small{color:#78857f}.loan-panel-dialog h2{margin:3px 0 0;font-size:1.45rem}.loan-panel-close{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:50%;background:#eff5f2;color:#176b58;font-size:22px}.loan-panel-body{padding:24px;overflow:auto}.loan-panel-body>.tab-pane{display:block!important;opacity:1!important}.loan-panel-body .card{box-shadow:none!important;border:1px solid #e1e8e3!important}.loan-panel-body #interest-calculation-details{margin-top:0!important}
+        @media(max-width:1100px){.loan-preview-metrics{grid-template-columns:repeat(2,1fr)}.loan-preview-grid{grid-template-columns:1fr}.loan-key-values{grid-template-columns:repeat(2,1fr)}}@media(max-width:900px){.loan-flow{grid-template-columns:repeat(3,1fr)}.loan-flow-step:nth-child(3):after{display:none}}@media(max-width:600px){.loan-preview-metrics{grid-template-columns:1fr}.loan-key-values{grid-template-columns:1fr 1fr}.loan-flow{grid-template-columns:1fr 1fr}.loan-flow-step:nth-child(odd):after{display:none}.loan-actions{position:static}.loan-status{display:none}}
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const modal = document.getElementById('loan-panel-modal');
+            const body = modal.querySelector('.loan-panel-body');
+            const title = document.getElementById('loan-panel-title');
+            let activePanel = null;
+            let panelAnchor = null;
+
+            const closePanel = function () {
+                if (activePanel && panelAnchor) {
+                    panelAnchor.replaceWith(activePanel);
+                    activePanel.className = activePanel.dataset.originalClass;
+                }
+                modal.classList.remove('is-open');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+                activePanel = null;
+                panelAnchor = null;
+            };
+
+            document.querySelectorAll('[data-loan-panel]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    const panel = document.getElementById(button.dataset.loanPanel);
+                    if (! panel) {
+                        return;
+                    }
+                    panelAnchor = document.createComment('loan-panel-anchor');
+                    panel.replaceWith(panelAnchor);
+                    panel.dataset.originalClass = panel.className;
+                    panel.className = 'loan-modal-panel';
+                    body.replaceChildren(panel);
+                    activePanel = panel;
+                    title.textContent = button.dataset.panelTitle || 'Application details';
+                    modal.classList.add('is-open');
+                    modal.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
+                    modal.querySelector('input, select, textarea, button')?.focus();
+                });
+            });
+
+            modal.querySelector('.loan-panel-close').addEventListener('click', closePanel);
+            modal.querySelector('.loan-panel-backdrop').addEventListener('click', closePanel);
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+                    closePanel();
+                }
+            });
+        });
+    </script>
 
 @endsection

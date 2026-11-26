@@ -46,6 +46,23 @@ class LoanQuotationService
         $maximumInstallment = $disposableIncome * (float) $version->maximum_installment_ratio;
         $affordabilityFactor = $installment > 0 ? min(1, $maximumInstallment / $installment) : 0;
         $recommendedAmount = min($amount, $amount * $affordabilityFactor, (float) $version->maximum_amount);
+        $policyFailures = [];
+
+        if ($term < $version->minimum_term || $term > $version->maximum_term) {
+            $policyFailures[] = "Requested term {$term} {$version->term_unit} is outside the product range of {$version->minimum_term} to {$version->maximum_term} {$version->term_unit}.";
+        }
+
+        if ($amount < (float) $version->minimum_amount || $amount > (float) $version->maximum_amount) {
+            $policyFailures[] = 'Requested principal '.number_format($amount, 2).' is outside the product range of '.number_format((float) $version->minimum_amount, 2).' to '.number_format((float) $version->maximum_amount, 2).'.';
+        }
+
+        if ($installment > $maximumInstallment) {
+            $policyFailures[] = 'Projected installment '.number_format($installment, 2).' exceeds the affordability limit of '.number_format($maximumInstallment, 2).'.';
+        }
+
+        if ($deductedFees >= $amount) {
+            $policyFailures[] = 'Fees deducted at disbursement must be lower than the requested principal.';
+        }
 
         return [
             'periods' => $periods,
@@ -71,12 +88,8 @@ class LoanQuotationService
             'maximum_installment' => round($maximumInstallment, 2),
             'recommended_amount' => round(max(0, $recommendedAmount), 2),
             'installment_ratio' => $disposableIncome > 0 ? round($installment / $disposableIncome, 4) : 999,
-            'affordable' => $installment <= $maximumInstallment
-                && $deductedFees < $amount
-                && $amount >= (float) $version->minimum_amount
-                && $amount <= (float) $version->maximum_amount
-                && $term >= $version->minimum_term
-                && $term <= $version->maximum_term,
+            'affordable' => $policyFailures === [],
+            'policy_failures' => $policyFailures,
             'formula' => $version->interest_method === 'Flat'
                 ? 'Installment = (Principal + Principal x periodic rate x periods) / periods. Rate basis: '.$version->rate_basis.'.'
                 : 'Principal per period = Principal / periods; Interest = opening principal x periodic rate; Installment = principal per period + interest',

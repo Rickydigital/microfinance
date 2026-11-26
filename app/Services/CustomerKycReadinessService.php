@@ -7,7 +7,7 @@ use App\Models\DocumentType;
 
 class CustomerKycReadinessService
 {
-    /** @return array{ready: bool, completed: int, total: int, checks: array<int, array{label: string, passed: bool, detail: string}>} */
+    /** @return array{ready: bool, approved: bool, completed: int, total: int, checks: array<int, array{label: string, passed: bool, detail: string}>} */
     public function evaluate(Customer $customer): array
     {
         $requiredDocumentTypes = DocumentType::query()->where('is_active', true)->where('is_required_for_kyc', true)
@@ -24,7 +24,8 @@ class CustomerKycReadinessService
         }
 
         $completed = collect($checks)->where('passed', true)->count();
+        $approved = $customer->verified_at !== null;
 
-        return ['ready' => $completed === count($checks), 'completed' => $completed, 'total' => count($checks), 'checks' => $checks];
+        return ['ready' => $approved || $completed === count($checks), 'approved' => $approved, 'completed' => $completed, 'total' => count($checks), 'checks' => $checks];
     }
 }

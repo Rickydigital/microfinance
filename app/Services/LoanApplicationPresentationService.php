@@ -41,7 +41,7 @@ class LoanApplicationPresentationService
         }
 
         if (! $quote['affordable']) {
-            $warnings[] = 'The requested terms exceed affordability or product policy.';
+            array_push($warnings, ...$quote['policy_failures']);
         }
 
         if ($application->guarantors->where('status', 'Verified')->count() < $application->productVersion->required_guarantors) {
