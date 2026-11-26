@@ -148,6 +148,14 @@ class LoanApplicationController extends Controller implements HasMiddleware
             ->first();
         $canApproveNextLevel = $nextApproval !== null && ($request->user()->hasRole($nextApproval->required_role) || $request->user()->hasRole('System Administrator'));
         $pendingApproval = $canApproveNextLevel ? $nextApproval : null;
+        $currentEconomicProfile = $loanApplication->customer->economicProfiles->whereNull('effective_to')->sortByDesc('id')->first();
+
+        if ($currentEconomicProfile && in_array($loanApplication->status, [LoanApplicationStatus::Draft, LoanApplicationStatus::Submitted, LoanApplicationStatus::UnderAssessment], true)) {
+            $loanApplication->setAttribute('declared_monthly_income', $currentEconomicProfile->monthly_income);
+            $loanApplication->setAttribute('declared_monthly_expenses', $currentEconomicProfile->monthly_expenses);
+            $loanApplication->setAttribute('existing_debt_payment', $currentEconomicProfile->existing_debt_payment);
+        }
+
         $quote = $quotation->quote($loanApplication->productVersion->loadMissing('fees'), (float) $loanApplication->requested_amount, $loanApplication->requested_term, (float) $loanApplication->declared_monthly_income, (float) $loanApplication->declared_monthly_expenses, (float) $loanApplication->existing_debt_payment);
         $approvedQuote = $loanApplication->approved_amount
             ? $quotation->quote($loanApplication->productVersion, (float) $loanApplication->approved_amount, $loanApplication->requested_term, (float) $loanApplication->declared_monthly_income, (float) $loanApplication->declared_monthly_expenses, (float) $loanApplication->existing_debt_payment)
@@ -233,6 +241,16 @@ class LoanApplicationController extends Controller implements HasMiddleware
     public function submit(LoanApplication $loanApplication, LoanApplicationWorkflowService $workflow, CustomerCommunicationService $communication, CustomerKycReadinessService $readiness, LoanQuotationService $quotation): RedirectResponse
     {
         $kyc = $readiness->evaluate($loanApplication->customer);
+        $currentEconomicProfile = $loanApplication->customer->economicProfiles()->whereNull('effective_to')->latest('id')->first();
+
+        if ($currentEconomicProfile) {
+            $loanApplication->update([
+                'declared_monthly_income' => $currentEconomicProfile->monthly_income,
+                'declared_monthly_expenses' => $currentEconomicProfile->monthly_expenses,
+                'existing_debt_payment' => $currentEconomicProfile->existing_debt_payment,
+            ]);
+        }
+
         $quote = $quotation->quote($loanApplication->productVersion->loadMissing('fees'), (float) $loanApplication->requested_amount, $loanApplication->requested_term, (float) $loanApplication->declared_monthly_income, (float) $loanApplication->declared_monthly_expenses, (float) $loanApplication->existing_debt_payment);
 
         if (! $kyc['ready']) {

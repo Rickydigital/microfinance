@@ -227,6 +227,7 @@
     <div class="customer-kin-list">
         @foreach ($kinRecords->isNotEmpty() ? $kinRecords : [null] as $index => $kin)
             <div class="customer-kin-row border rounded-4 p-3 mb-3">
+                @if ($kin)<input type="hidden" name="kin[{{ $index }}][id]" value="{{ $kin->id }}">@endif
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <strong class="small">Next of kin {{ $loop->iteration }}</strong>
                     <button type="button" class="btn btn-sm btn-outline-danger" data-remove-kin aria-label="Remove next of kin">Remove</button>

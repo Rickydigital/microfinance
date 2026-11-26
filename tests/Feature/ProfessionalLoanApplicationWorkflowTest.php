@@ -106,3 +106,32 @@ test('loan application view renders the complete credit dossier', function (): v
         ->assertSee('Projected repayment schedule')
         ->assertSee('Application timeline');
 });
+
+test('draft affordability uses the customers current economic profile', function (): void {
+    $branch = Branch::factory()->create();
+    $officer = User::factory()->create(['branch_id' => $branch->id]);
+    $officer->assignRole('Loan Officer');
+    $customer = Customer::factory()->create(['branch_id' => $branch->id, 'status' => CustomerStatus::Active]);
+    $customer->economicProfiles()->create([
+        'occupation' => 'Trading',
+        'income_source' => 'Business',
+        'monthly_income' => 4500000,
+        'monthly_expenses' => 100000,
+        'existing_debt_payment' => 0,
+        'effective_from' => today(),
+    ]);
+    $application = LoanApplication::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'created_by' => $officer->id,
+        'status' => LoanApplicationStatus::Draft,
+        'declared_monthly_income' => 0,
+        'declared_monthly_expenses' => 0,
+        'existing_debt_payment' => 0,
+    ]);
+
+    $this->actingAs($officer)->get(route('loan-applications.show', $application))
+        ->assertOk()
+        ->assertSee('Limit: TZS 2,200,000.00')
+        ->assertDontSee('affordability limit of 0.00');
+});

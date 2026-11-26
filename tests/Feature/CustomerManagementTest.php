@@ -162,6 +162,35 @@ test('editing updates the current economic profile kyc risk and primary address'
         ->and($primaryAddress->fresh()->verified_at)->toBeNull();
 });
 
+test('editing synchronizes next of kin without creating duplicate records', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+    $this->seed(CustomerTypeSeeder::class);
+    $user = User::factory()->create();
+    $user->assignRole('Customer KYC Officer');
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'type' => 'Individual']);
+    $firstKin = $customer->relationships()->create(['type' => 'Next of Kin', 'full_name' => 'Amina Musa', 'phone' => '0712000000']);
+    $duplicateKin = $customer->relationships()->create(['type' => 'Next of Kin', 'full_name' => 'Amina Musa', 'phone' => '0712000000']);
+
+    $kin = collect(range(1, 6))->map(fn (): array => [
+        'id' => $firstKin->id,
+        'full_name' => 'Amina Musa',
+        'phone' => '0712000000',
+        'address' => 'Dar es Salaam',
+    ])->all();
+    $kin[1]['id'] = $duplicateKin->id;
+
+    $this->actingAs($user)->put(route('customers.update', $customer), [
+        'type' => 'Individual',
+        'first_name' => $customer->first_name,
+        'last_name' => $customer->last_name,
+        'phone' => $customer->phone,
+        'kin' => $kin,
+    ])->assertSessionHasNoErrors();
+
+    expect($customer->relationships()->where('type', 'Next of Kin')->count())->toBe(1)
+        ->and($firstKin->fresh()->address)->toBe('Dar es Salaam');
+});
+
 test('an invalid customer update preserves the edit modal target', function (): void {
     $this->seed(RolePermissionSeeder::class);
     $this->seed(CustomerTypeSeeder::class);

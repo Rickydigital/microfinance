@@ -8,6 +8,20 @@ use Illuminate\Validation\Rule;
 
 class UpdateCustomerRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $kin = collect(is_array($this->input('kin')) ? $this->input('kin') : [])
+            ->filter(fn ($item): bool => is_array($item) && collect($item)->except('id')->contains(fn ($value): bool => $value !== null && trim((string) $value) !== ''))
+            ->unique(function (array $item): string {
+                return strtolower(trim((string) ($item['full_name'] ?? '')).'|'.trim((string) ($item['phone'] ?? '')).'|'.trim((string) ($item['identification_number'] ?? '')));
+            })
+            ->take(5)
+            ->values()
+            ->all();
+
+        $this->merge(['kin' => $kin]);
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -39,6 +53,7 @@ class UpdateCustomerRequest extends FormRequest
             'economic.existing_debt_payment' => ['nullable', 'numeric', 'min:0'],
             'economic.business_turnover' => ['nullable', 'numeric', 'min:0'],
             'kin' => ['nullable', 'array', 'max:5'],
+            'kin.*.id' => ['nullable', 'integer', 'exists:customer_relationships,id'],
             'kin.*.full_name' => ['required_with:kin.*.phone', 'nullable', 'string', 'max:255'],
             'kin.*.phone' => ['nullable', 'string', 'max:30'],
             'kin.*.address' => ['nullable', 'string', 'max:500'],

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\CustomerStatus;
 use App\Http\Requests\StoreCustomerRequest;
 use App\Http\Requests\UpdateCustomerRequest;
+use App\LoanApplicationStatus;
 use App\Models\Customer;
 use App\Models\CustomerType;
 use App\Models\District;
@@ -280,11 +281,38 @@ class CustomerController extends Controller implements HasMiddleware
             } else {
                 $customer->economicProfiles()->create($defaults + $economicAttributes + ['effective_from' => today()]);
             }
+
+            $customer->loanApplications()
+                ->whereIn('status', [LoanApplicationStatus::Draft->value, LoanApplicationStatus::Submitted->value, LoanApplicationStatus::UnderAssessment->value])
+                ->update([
+                    'declared_monthly_income' => $economicAttributes['monthly_income'] ?? $currentProfile?->monthly_income ?? 0,
+                    'declared_monthly_expenses' => $economicAttributes['monthly_expenses'] ?? $currentProfile?->monthly_expenses ?? 0,
+                    'existing_debt_payment' => $economicAttributes['existing_debt_payment'] ?? $currentProfile?->existing_debt_payment ?? 0,
+                ]);
         }
-        foreach ($request->input('kin', []) as $kin) {
-            if (! empty($kin['full_name'])) {
-                $customer->relationships()->create($kin + ['type' => 'Next of Kin']);
+
+        if ($request->has('kin')) {
+            $keptRelationshipIds = [];
+
+            foreach ($request->input('kin', []) as $kin) {
+                if (empty($kin['full_name'])) {
+                    continue;
+                }
+
+                $relationshipId = isset($kin['id'])
+                    ? $customer->relationships()->where('type', 'Next of Kin')->whereKey($kin['id'])->value('id')
+                    : null;
+                $attributes = collect($kin)->only(['full_name', 'phone', 'address', 'identification_number'])->all();
+                $relationship = $relationshipId
+                    ? $customer->relationships()->whereKey($relationshipId)->firstOrFail()
+                    : $customer->relationships()->make(['type' => 'Next of Kin']);
+                $relationship->fill($attributes)->save();
+                $keptRelationshipIds[] = $relationship->id;
             }
+
+            $customer->relationships()->where('type', 'Next of Kin')
+                ->when($keptRelationshipIds !== [], fn ($query) => $query->whereNotIn('id', $keptRelationshipIds))
+                ->delete();
         }
     }
 
